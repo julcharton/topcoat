@@ -1,0 +1,65 @@
+# Topcoat UI install state. Managed by `topcoat ui`.
+version = 1
+components_dir = "src/components"
+
+[theme]
+name = "neutral"
+registry = "topcoat"
+hash = "sha256:6e451a2d3470b0ee544ccf4240da8631bad4c807a06ae0d3a1fc77154b86c3b9"
+file = "styles.css"
+
+[registries.topcoat.components.alert]
+hash = "sha256:47c33b40d0a966b88a113ad13b6c17d9c3f104128b45b7fea297eb2a0b9c5f9c"
+file = "src/components/alert.rs"
+
+[registries.topcoat.components.avatar]
+hash = "sha256:e44da5084ca4425a1e9b094ac698111777d19da637b1bdb016153e58e8741a51"
+file = "src/components/avatar.rs"
+
+[registries.topcoat.components.badge]
+hash = "sha256:bf27385418a098c0003e7acebd2a94aa0d49795bb6ec6d685428da287037fea9"
+file = "src/components/badge.rs"
+
+[registries.topcoat.components.breadcrumb]
+hash = "sha256:c687399a226cf6cd05b015f95d5bbe00a314d7176c540f4362dadd9c0424e22c"
+file = "src/components/breadcrumb.rs"
+
+[registries.topcoat.components.button]
+hash = "sha256:1b40f815a96997b28f35b8f385f5849d86ca53ba47fb752a3e795bfc24c3a55d"
+file = "src/components/button.rs"
+
+[registries.topcoat.components.card]
+hash = "sha256:63166ad6fdf41fd409b8c879231d879f90375ef225cda9dc1559151c9deae5fc"
+file = "src/components/card.rs"
+
+[registries.topcoat.components.dialog]
+hash = "sha256:4191478a84b3e35b927927624cc12e89f8ee6ca69ac1a710950d4653bbbd9c67"
+file = "src/components/dialog.rs"
+
+[registries.topcoat.components.field]
+hash = "sha256:068bd99ee2bc265d4d1afeae789153b3273ec3d5a8a380af7e2cde9b28d4c66c"
+file = "src/components/field.rs"
+
+[registries.topcoat.components.input]
+hash = "sha256:c96f34a75f49d24388eb854b864033954060896ae008e76a229ab306299185fd"
+file = "src/components/input.rs"
+
+[registries.topcoat.components.label]
+hash = "sha256:85c495cf96141fbfe89a48287e1aebebe4d9e18c67a9da9abf0a045f604d01dc"
+file = "src/components/label.rs"
+
+[registries.topcoat.components.separator]
+hash = "sha256:7ba5a7628128e1811e960884bd56da34f754c1d516230b4442dfbc1cb97e73e9"
+file = "src/components/separator.rs"
+
+[registries.topcoat.components.sheet]
+hash = "sha256:99e55f904044e7bf2b335ac5fefde1d4da720548cb5dc5dfdca9aa05e6b98622"
+file = "src/components/sheet.rs"
+
+[registries.topcoat.components.sidebar]
+hash = "sha256:985d717cb24142801c1cfdce0664968c54a61c6c671512cbff6f3f0271daf2e8"
+file = "src/components/sidebar.rs"
+
+[registries.topcoat.components.skeleton]
+hash = "sha256:3b6d99ca9aef02697ce1142903bd49062ef9f2bd4ecbb1e6b82be0ea6554d1a5"
+file = "src/components/skeleton.rs"

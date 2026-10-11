@@ -2,7 +2,7 @@
 
 > Rust server-rendered web framework. Async components produce HTML; runtime expressions compile to Rust + JavaScript, without client WASM. Experimental. Apps depend on the `topcoat` facade.
 
-Links point to authoritative guides in this checkout. Runnable patterns: `examples/<feature>/src/`; complete app: `demos/coffee-shop/`. Consult linked guides/source for details omitted here.
+Links point to authoritative guides in this checkout. Runnable patterns: `examples/<feature>/src/`; complete app: `demos/backroom/`. Consult linked guides/source for details omitted here.
 
 ## Start
 

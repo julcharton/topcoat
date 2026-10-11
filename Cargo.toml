@@ -62,7 +62,7 @@ members = [
     "examples/ui",
     "examples/websocket",
 
-    "demos/coffee-shop",
+    "demos/backroom",
 
     "benchmarks/topcoat",
 ]
@@ -148,6 +148,7 @@ topcoat-view-macro = { version = "0.10.0", path = "crates/topcoat-view/macro" }
 
 anyhow = "1.0"
 anymap3 = "1.0"
+argon2 = "0.6"
 askama = "0.16.1"
 base64 = "0.22"
 boxcar = "0.2"
@@ -177,6 +178,7 @@ ignore = "0.4"
 indicatif = "0.18"
 inventory = "0.3.24"
 ipnet = "2"
+jiff = "0.2"
 lettre = { version = "0.11", default-features = false }
 matchit = "0.9"
 memchr = "2.8"
@@ -199,7 +201,8 @@ smallvec = "1"
 syn = "3.0.6"
 thiserror = "2.0.18"
 time = "0.3"
-toasty = "0.7"
+toasty = "0.11"
+toasty-cli = "0.11"
 tokio = "1.51.1"
 tokio-util = "0.7"
 toml = "1.1.2"

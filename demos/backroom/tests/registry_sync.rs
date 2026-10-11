@@ -40,7 +40,7 @@ fn theme_matches_registry() {
 
     let installed = package_root().join(theme.file_name());
     let hint = "re-install the theme by deleting it along with components.toml \
-        and running `topcoat ui init --theme neutral` in demos/coffee-shop";
+        and running `topcoat ui init --theme neutral` in demos/backroom";
     assert!(
         read_installed(&installed, hint) == theme.read_source().unwrap(),
         "{} no longer matches the registry's neutral theme; {hint}",
@@ -58,7 +58,7 @@ fn components_match_registry() {
         if !installed.exists() {
             continue;
         }
-        let hint = format!("run `topcoat ui add {name} --overwrite` in demos/coffee-shop");
+        let hint = format!("run `topcoat ui add {name} --overwrite` in demos/backroom");
         assert!(
             read_installed(&installed, &hint) == component.read_source().unwrap(),
             "{} no longer matches the registry's `{name}` component; {hint}",
@@ -92,7 +92,7 @@ fn vendored_components_come_from_the_registry() {
         assert!(
             known.iter().any(|known| known == file),
             "{} is not a component of the built-in registry; \
-             remove it with `topcoat ui remove` in demos/coffee-shop, or move it out of {}",
+             remove it with `topcoat ui remove` in demos/backroom, or move it out of {}",
             dir.join(file).display(),
             dir.display(),
         );
