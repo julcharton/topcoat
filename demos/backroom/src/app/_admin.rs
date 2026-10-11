@@ -39,9 +39,6 @@ use crate::{
     },
 };
 
-/// The `id` of the sidebar, referenced by the buttons that toggle it.
-const SIDEBAR_ID: &str = "app-sidebar";
-
 /// A page in the sidebar's navigation.
 struct NavItem {
     label: &'static str,
@@ -60,20 +57,25 @@ static NAV: [NavItem; 1] = [NavItem {
 async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
     let user = require_user(cx).await?;
 
-    // The desktop sidebar and the mobile sheet open and close independently.
     let open = signal(cx, || true);
     let mobile_open = signal(cx, || false);
+    let sidebar_id = element_id(cx);
 
     Ok(view! {
         sidebar_provider(
-            app_sidebar(user: user, open: &open, mobile_open: &mobile_open)
+            app_sidebar(
+                id: &sidebar_id,
+                user: user,
+                open: &open,
+                mobile_open: &mobile_open
+            )
             sidebar_inset(
                 sidebar_header(
                     sidebar_trigger(
                         open: $(open.get()),
                         attrs: attributes! {
                             class="max-md:hidden"
-                            aria-controls=(SIDEBAR_ID)
+                            aria-controls=(&sidebar_id)
                             @click=$(|_e: Event| open.toggle())
                         }
                     )
@@ -81,7 +83,7 @@ async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
                         open: $(mobile_open.get()),
                         attrs: attributes! {
                             class="md:hidden"
-                            aria-controls=(SIDEBAR_ID)
+                            aria-controls=(&sidebar_id)
                             @click=$(|_e: Event| mobile_open.toggle())
                         }
                     )
@@ -99,6 +101,7 @@ async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
 #[component]
 async fn app_sidebar(
     cx: &Cx,
+    id: &str,
     user: &User,
     open: &Signal<bool>,
     mobile_open: &Signal<bool>,
@@ -109,7 +112,7 @@ async fn app_sidebar(
             mobile_open: $(mobile_open.get()),
             collapsible: SidebarCollapsible::Icon,
             sheet_attrs: attributes! {
-                id=(SIDEBAR_ID)
+                id=(id)
                 aria-label="Back office navigation"
                 @keydown=$(|e: Event| {
                     if e.key == "Escape" {
@@ -118,7 +121,7 @@ async fn app_sidebar(
                 })
                 @click=$(|e: Event| {
                     // A click on the backdrop targets the sheet itself.
-                    if e.target.id == SIDEBAR_ID {
+                    if e.target.id == id {
                         mobile_open.set(false);
                     }
                 })

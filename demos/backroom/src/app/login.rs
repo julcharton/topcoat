@@ -11,7 +11,7 @@ use topcoat::{
         error::{RouterErrorExt, SeeOther, redirect, rewrite, see_other},
         href, page, route,
     },
-    view::{View, attributes, view},
+    view::{View, attributes, element_id, view},
 };
 
 use crate::{
@@ -53,6 +53,11 @@ pub async fn page(cx: &Cx) -> Result<impl View> {
     let failed = try_request_context::<SignInFailed>(cx);
     let email = failed.map(|failed| failed.email.as_str());
 
+    // IDs that connect the labels to their inputs and the button to its form.
+    let form_id = element_id(cx);
+    let email_id = element_id(cx);
+    let password_id = element_id(cx);
+
     Ok(view! {
         if failed.is_some() {
             (StatusCode::UNPROCESSABLE_ENTITY)
@@ -71,7 +76,7 @@ pub async fn page(cx: &Cx) -> Result<impl View> {
                     card_description("Use your staff account to manage the store.")
                 )
                 card_content(
-                    <form id="sign-in" method="post" action=(href!(submit))>
+                    <form id=(&form_id) method="post" action=(href!(submit))>
                         field_group(
                             if failed.is_some() {
                                 alert(
@@ -82,10 +87,13 @@ pub async fn page(cx: &Cx) -> Result<impl View> {
                                 )
                             }
                             field(
-                                field_label(attrs: attributes! { for="email" }, "Email")
+                                field_label(
+                                    attrs: attributes! { for=(&email_id) },
+                                    "Email"
+                                )
                                 input(
                                     attrs: attributes! {
-                                        id="email"
+                                        id=(&email_id)
                                         name="email"
                                         type="email"
                                         autocomplete="username"
@@ -96,12 +104,12 @@ pub async fn page(cx: &Cx) -> Result<impl View> {
                             )
                             field(
                                 field_label(
-                                    attrs: attributes! { for="password" },
+                                    attrs: attributes! { for=(&password_id) },
                                     "Password"
                                 )
                                 input(
                                     attrs: attributes! {
-                                        id="password"
+                                        id=(&password_id)
                                         name="password"
                                         type="password"
                                         autocomplete="current-password"
@@ -114,7 +122,7 @@ pub async fn page(cx: &Cx) -> Result<impl View> {
                 )
                 card_footer(
                     button(
-                        attrs: attributes! { type="submit" form="sign-in" class="w-full" },
+                        attrs: attributes! { type="submit" form=(&form_id) class="w-full" },
                         "Sign in"
                     )
                 )
