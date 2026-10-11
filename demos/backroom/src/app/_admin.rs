@@ -9,7 +9,7 @@ use topcoat::{
     icon::{IconData, icon, iconify::iconify_icon},
     router::{HrefTarget, Slot, href, layout, page, request::uri},
     runtime::{Event, Signal, link, signal},
-    view::{View, attributes, component, view},
+    view::{View, attributes, component, element_id, view},
 };
 
 use super::{login::require_user, logout};
@@ -20,6 +20,11 @@ use crate::{
             breadcrumb, breadcrumb_item, breadcrumb_list, breadcrumb_page, breadcrumb_separator,
         },
         button::{ButtonSize, ButtonVariant, button},
+        dropdown_menu::{
+            dropdown_menu, dropdown_menu_content, dropdown_menu_item, dropdown_menu_label,
+            dropdown_menu_separator, dropdown_menu_trigger,
+        },
+        floating::{FloatingAlign, FloatingSide},
         separator::{SeparatorOrientation, separator},
         sidebar::{
             SidebarCollapsible, SidebarMenuButtonSize, SidebarMenuButtonVariant, sidebar,
@@ -175,44 +180,61 @@ async fn app_sidebar(
                     )
                 )
             )
-            sidebar_footer(
-                sidebar_menu(
-                    sidebar_menu_item(
-                        <div
-                            title=(&user.name)
-                            class=(sidebar_menu_button_variants(
-                                SidebarMenuButtonVariant::Default,
-                                SidebarMenuButtonSize::Lg,
-                            ))
-                        >
-                            avatar(
-                                size: AvatarSize::Sm,
-                                avatar_fallback((user.initials()))
-                            )
-                            <span class="flex flex-col">
-                                <span class="truncate font-medium">(&user.name)</span>
-                                <span class="truncate text-xs text-muted-foreground">
-                                    (user.role.label())
-                                </span>
-                            </span>
-                        </div>
+            sidebar_footer(sidebar_menu(sidebar_menu_item(user_menu(user: user))))
+        )
+    })
+}
+
+/// The signed-in user, opening a menu with their account details and signing out.
+#[component]
+async fn user_menu(cx: &Cx, user: &User) -> Result<impl View> {
+    let menu = element_id(cx);
+
+    Ok(view! {
+        dropdown_menu(
+            dropdown_menu_trigger(
+                target: &menu,
+                attrs: attributes! {
+                    title=(&user.name)
+                    class=(sidebar_menu_button_variants(
+                        SidebarMenuButtonVariant::Default,
+                        SidebarMenuButtonSize::Lg,
+                    ))
+                },
+                avatar(size: AvatarSize::Sm, avatar_fallback((user.initials())))
+                // The sidebar hides the last `<span>` when it collapses to icons.
+                <span class="flex min-w-0 flex-1 items-center gap-2">
+                    <span class="flex min-w-0 flex-col">
+                        <span class="truncate font-medium">(&user.name)</span>
+                        <span class="truncate text-xs text-muted-foreground">
+                            (user.role.label())
+                        </span>
+                    </span>
+                    icon(
+                        data: iconify_icon!("lucide:chevrons-up-down"),
+                        attrs: attributes! { class="ml-auto" }
                     )
-                    sidebar_menu_item(
-                        <form method="post" action=(href!(logout::submit))>
-                            <button
-                                type="submit"
-                                title="Sign out"
-                                class=(sidebar_menu_button_variants(
-                                    SidebarMenuButtonVariant::Default,
-                                    SidebarMenuButtonSize::Md,
-                                ))
-                            >
-                                icon(data: iconify_icon!("lucide:log-out"))
-                                <span>"Sign out"</span>
-                            </button>
-                        </form>
-                    )
+                </span>
+            )
+            // The menu opens beside the sidebar with its bottom edge level with the
+            // trigger's, so it grows upward and keeps the footer's spacing from the
+            // bottom of the window.
+            dropdown_menu_content(
+                id: &menu,
+                side: FloatingSide::Right,
+                align: FloatingAlign::End,
+                dropdown_menu_label(
+                    <span class="block text-sm text-foreground">(&user.name)</span>
+                    (&user.email)
                 )
+                dropdown_menu_separator()
+                <form method="post" action=(href!(logout::submit))>
+                    dropdown_menu_item(
+                        attrs: attributes! { type="submit" },
+                        icon(data: iconify_icon!("lucide:log-out"))
+                        "Sign out"
+                    )
+                </form>
             )
         )
     })
