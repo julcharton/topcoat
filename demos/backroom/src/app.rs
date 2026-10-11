@@ -1,10 +1,12 @@
 mod _admin;
 mod login;
 mod logout;
+mod theme;
 
 use topcoat::{
     Result,
     asset::{AssetBundle, RouterBuilderAssetExt},
+    context::Cx,
     cookie::RouterBuilderCookieExt,
     font::{Font, fontsource::fontsource_font},
     router::{RouterBuilder, RouterBuilderDiscoverExt, Slot, layout, module_router},
@@ -13,6 +15,8 @@ use topcoat::{
     tailwind,
     view::{View, view},
 };
+
+use crate::features::theme::theme;
 
 /// The Geist font family, loaded from Fontsource and served from the asset bundle.
 const GEIST: Font =
@@ -35,10 +39,12 @@ pub fn router() -> RouterBuilder {
 
 /// The HTML document around every page.
 #[layout]
-async fn root(slot: Slot<'_>) -> Result<impl View> {
+async fn root(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
+    let theme = theme(cx);
+
     Ok(view! {
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="en" class=(theme.class()) style=(theme.color_scheme())>
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">

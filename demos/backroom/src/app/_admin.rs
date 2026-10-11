@@ -7,7 +7,7 @@ use topcoat::{
     Result,
     context::Cx,
     icon::{IconData, icon, iconify::iconify_icon},
-    router::{HrefTarget, Slot, href, layout, page},
+    router::{HrefTarget, Slot, href, layout, page, request::uri},
     runtime::{Event, Signal, link, signal},
     view::{View, attributes, component, view},
 };
@@ -28,7 +28,10 @@ use crate::{
             sidebar_menu_button_variants, sidebar_menu_item, sidebar_provider, sidebar_trigger,
         },
     },
-    features::user::User,
+    features::{
+        theme::{Theme, theme},
+        user::User,
+    },
 };
 
 /// The `id` of the sidebar, referenced by the buttons that toggle it.
@@ -79,6 +82,7 @@ async fn shell(cx: &Cx, slot: Slot<'_>) -> Result<impl View> {
                     )
                     separator(orientation: SeparatorOrientation::Vertical)
                     page_breadcrumb()
+                    theme_toggle()
                 )
                 <div class="flex flex-1 flex-col gap-6 p-6">(slot)</div>
             )
@@ -229,6 +233,36 @@ async fn page_breadcrumb(cx: &Cx) -> Result<impl View> {
                 }
             )
         )
+    })
+}
+
+/// A button that switches between the light and dark themes.
+///
+/// It submits a form, and the page reloads in the new theme.
+#[component]
+async fn theme_toggle(cx: &Cx) -> Result<impl View> {
+    let dark = theme(cx) == Theme::Dark;
+    let label = if dark {
+        "Switch to light theme"
+    } else {
+        "Switch to dark theme"
+    };
+    let return_to = uri(cx).path_and_query().map_or("/", |path| path.as_str());
+
+    Ok(view! {
+        <form method="post" action=(href!(super::theme::toggle)) class="ml-auto">
+            <input type="hidden" name="return_to" value=(return_to)>
+            button(
+                variant: ButtonVariant::Ghost,
+                size: ButtonSize::Icon,
+                attrs: attributes! { type="submit" aria-label=(label) title=(label) },
+                if dark {
+                    icon(data: iconify_icon!("lucide:sun"))
+                } else {
+                    icon(data: iconify_icon!("lucide:moon"))
+                }
+            )
+        </form>
     })
 }
 
