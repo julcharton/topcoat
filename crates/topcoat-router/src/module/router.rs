@@ -60,6 +60,7 @@ impl ModuleRouterBuilder {
     /// Whether `module_path` is `root_module_path` or a module below it.
     /// Discovery skips everything else, so routers rooted in different crates
     /// or modules can live in one binary.
+    #[cfg(any(feature = "discover", test))]
     fn owns(root_module_path: &str, module_path: &str) -> bool {
         module_path == root_module_path
             || module_path
