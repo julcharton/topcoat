@@ -52,6 +52,17 @@ impl StrSurrogate {
         StringSurrogate::new(self.0.to_owned())
     }
 
+    /// Returns an owned lowercase string using Rust's Unicode default casing.
+    ///
+    /// Matches [`str::to_lowercase`], including contextual Greek sigma and
+    /// mappings that expand to multiple characters. This is locale independent.
+    /// Expressions support Rust Unicode versions 17.0.0 and 18.0.0.
+    #[inline]
+    #[must_use]
+    pub fn to_lowercase(&self) -> StringSurrogate {
+        StringSurrogate::new(self.0.to_lowercase())
+    }
+
     #[inline]
     #[must_use]
     pub fn is_empty(&self) -> BoolSurrogate {

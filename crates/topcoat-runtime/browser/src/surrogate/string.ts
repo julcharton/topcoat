@@ -1,6 +1,7 @@
 import type { AttributeValueViewParts, NodeViewParts } from "../dom/view";
 import { Bool } from "./bool";
 import { Integer, serverUsizeType } from "./integer";
+import { lowercase } from "./string/lowercase";
 
 const TEXT_ENCODER = new TextEncoder();
 
@@ -58,6 +59,10 @@ export class Str implements AttributeValueViewParts, NodeViewParts {
 
 	to_owned(): String {
 		return new String(this.v);
+	}
+
+	to_lowercase(unicodeVersion: Str): String {
+		return new String(lowercase(this.v, unicodeVersion.toString()));
 	}
 
 	is_empty(): Bool {
