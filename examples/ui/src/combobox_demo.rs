@@ -80,7 +80,7 @@ pub async fn combobox_demo(cx: &Cx) -> Result<impl View> {
                 >
                     field(
                         field_label(
-                            attrs: attributes! { for=(primary.input_id()) },
+                            attrs: attributes! { id=(primary.label_id()) for=(primary.input_id()) },
                             "Primary region"
                         )
                         combobox(
@@ -103,7 +103,7 @@ pub async fn combobox_demo(cx: &Cx) -> Result<impl View> {
                     )
                     field(
                         field_label(
-                            attrs: attributes! { for=(backup.input_id()) },
+                            attrs: attributes! { id=(backup.label_id()) for=(backup.input_id()) },
                             "Backup region"
                         )
                         combobox(

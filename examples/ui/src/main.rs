@@ -241,7 +241,7 @@ async fn home(cx: &Cx) -> Result<impl View> {
                             // components to the ones assembled out of them.
                             <div
                                 id="components"
-                                class="mt-14 scroll-mt-20 columns-1 gap-4 lg:columns-2 2xl:columns-3"
+                                class="mt-14 scroll-mt-20 gap-4 lg:columns-2 2xl:columns-3"
                             >
                                 demo(buttons_card())
                                 demo(notices())

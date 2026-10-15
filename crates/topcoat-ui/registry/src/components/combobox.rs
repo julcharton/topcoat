@@ -73,10 +73,9 @@ struct Choice {
 }
 
 #[record]
-#[derive(Clone)]
 struct Choices {
     rows: Vec<Choice>,
-    revision: usize,
+    revision: Option<usize>,
 }
 
 /// The state shared by a combobox shell and its application's results shard.
@@ -88,13 +87,14 @@ struct Choices {
 #[derive(Clone)]
 pub struct ComboboxState {
     input_id: String,
+    label_id: String,
     popup_id: String,
     default_value: String,
     search: Signal<Search>,
     selection: Signal<Option<Selection>>,
     default_selection: Signal<Option<Selection>>,
     draft: Signal<String>,
-    choices: Signal<Option<Choices>>,
+    choices: Signal<Choices>,
     active: Signal<Option<Choice>>,
     choose: Signal<Option<Choice>>,
     pending: Signal<i32>,
@@ -127,6 +127,7 @@ impl ComboboxState {
         let selected = ComboboxOption::selected(options, &default_value);
         Self {
             input_id: element_id(cx),
+            label_id: element_id(cx),
             popup_id: element_id(cx),
             default_value,
             search: signal(cx, || Search {
@@ -138,7 +139,10 @@ impl ComboboxState {
             draft: signal(cx, || {
                 selected.map_or_else(String::new, |value| value.label)
             }),
-            choices: signal(cx, || None::<Choices>),
+            choices: signal(cx, || Choices {
+                rows: Vec::new(),
+                revision: None,
+            }),
             active: signal(cx, || None::<Choice>),
             choose: signal(cx, || None::<Choice>),
             pending: signal(cx, || 0i32),
@@ -155,6 +159,12 @@ impl ComboboxState {
     #[must_use]
     pub fn input_id(&self) -> &str {
         &self.input_id
+    }
+
+    /// The stable ID for the visible label shared by the input and popup.
+    #[must_use]
+    pub fn label_id(&self) -> &str {
+        &self.label_id
     }
 
     /// The committed form value. Typing clears selection until a choice is committed.
@@ -175,10 +185,13 @@ impl ComboboxState {
 
         expr!(if state_composing.get() {
             false
-        } else if state_choices.get().is_some() {
-            state_choices.get().unwrap().revision == state_search.get().revision
         } else {
-            false
+            let revision = state_choices.read().revision.clone();
+            if revision.is_some() {
+                revision.unwrap() == state_search.read().revision
+            } else {
+                false
+            }
         })
     }
 
@@ -209,10 +222,10 @@ impl ComboboxState {
             state_open.set(true);
             if !state_composing.get() {
                 if !event.is_composing {
-                    if text != state_search.get().query {
+                    if text != state_search.read().query {
                         state_search.set(Search {
                             query: text,
-                            revision: state_search.get().revision + 1,
+                            revision: state_search.read().revision.clone() + 1,
                         });
                     }
                 }
@@ -250,6 +263,13 @@ impl ComboboxState {
                     if event.key == "Enter" {
                         event.prevent_default();
                     }
+                } else if event.key == "Enter" {
+                    if state_open.get() {
+                        event.prevent_default();
+                        if current {
+                            state_choose.set(state_active.get());
+                        }
+                    }
                 } else if !modified {
                     let direction = if event.key == "ArrowDown" {
                         1i32
@@ -262,7 +282,7 @@ impl ComboboxState {
                         event.prevent_default();
                         state_open.set(true);
                         if current {
-                            let rows = state_choices.get().unwrap().rows;
+                            let rows = state_choices.read().rows.as_slice();
                             if !rows.is_empty() {
                                 let index = if state_active.get().is_some() {
                                     let index = state_active.get().unwrap().index;
@@ -287,13 +307,6 @@ impl ComboboxState {
                         } else {
                             state_pending.set(direction);
                         }
-                    } else if event.key == "Enter" {
-                        if state_open.get() {
-                            event.prevent_default();
-                            if current {
-                                state_choose.set(state_active.get());
-                            }
-                        }
                     } else if event.key == "Escape" {
                         if state_open.get() {
                             event.prevent_default();
@@ -316,12 +329,14 @@ impl ComboboxState {
         let state_draft = self.draft.clone();
         let state_choices = self.choices.clone();
         let state_active = self.active.clone();
-        let state_choose = self.choose.clone();
         let state_pending = self.pending.clone();
+        let state_choose = self.choose.clone();
         let state_open = self.open.clone();
         let state_invalid = self.invalid.clone();
         let state_edits = self.edits.clone();
 
+        let state_composing = self.composing.clone();
+        let state_completing = self.completing.clone();
         let current = self.current();
         let input_ref = ElementRef::<InputElement>::new(self.input_id.clone());
         let popup = ElementRef::<HtmlElement>::new(self.popup_id.clone());
@@ -341,10 +356,10 @@ impl ComboboxState {
                         false
                     } else if !current {
                         false
-                    } else if choice.revision != state_search.get().revision {
+                    } else if choice.revision != state_search.read().revision {
                         false
                     } else {
-                        let rows = state_choices.get().unwrap().rows;
+                        let rows = state_choices.read().rows.as_slice();
                         if rows.get(choice.index).is_some() {
                             rows.index(choice.index).value == choice.value
                         } else {
@@ -359,7 +374,7 @@ impl ComboboxState {
                         state_draft.set(choice.label);
                         state_search.set(Search {
                             query: "".to_owned(),
-                            revision: state_search.get().revision + 1,
+                            revision: state_search.read().revision.clone() + 1,
                         });
                         state_edits.increment();
                         state_open.set(false);
@@ -371,8 +386,13 @@ impl ComboboxState {
                 if unavailable {
                     state_open.set(false);
                     state_active.set(None);
+                    state_pending.set(0i32);
                 }
-                let message = if state_selection.get().is_none() {
+                let message = if state_composing.get() {
+                    "Finish entering text before submitting."
+                } else if state_completing.get() {
+                    "Finish entering text before submitting."
+                } else if state_selection.get().is_none() {
                     if state_draft.get().is_empty() {
                         ""
                     } else {
@@ -394,6 +414,7 @@ impl ComboboxState {
                         if visibility.unwrap() != state_open.get() {
                             state_open.set(false);
                             state_active.set(None);
+                            state_pending.set(0i32);
                         }
                     }
                 }
@@ -402,13 +423,9 @@ impl ComboboxState {
     }
 
     fn form_effect(&self) -> Effect {
-        let state_composing = self.composing.clone();
-        let state_completing = self.completing.clone();
-
         let complete_state = self.clone();
         let reset_state = self.clone();
         let edits = self.edits.clone();
-        let input_ref = ElementRef::<InputElement>::new(self.input_id.clone());
         effect(expr!(|scope: EffectContext| {
             let _scope = scope.clone();
             let _edits = edits;
@@ -426,13 +443,13 @@ impl ComboboxState {
                 reset_state.selection.set(selected);
                 reset_state.search.set(Search {
                     query: "".to_owned(),
-                    revision: reset_state.search.get().revision + 1,
+                    revision: reset_state.search.read().revision.clone() + 1,
                 });
                 reset_state.edits.increment();
                 reset_state.open.set(false);
                 reset_state.active.set(None);
-                reset_state.choose.set(None);
                 reset_state.pending.set(0i32);
+                reset_state.choose.set(None);
                 reset_state.composing.set(false);
                 reset_state.completing.set(false);
                 reset_state.invalid.set(false);
@@ -458,22 +475,6 @@ impl ComboboxState {
                     });
                 }, {signal});
             })();", ());
-            let resolved = input_ref.resolve();
-            if resolved.is_ok() {
-                let form = resolved.unwrap().form_target();
-                if form.is_ok() {
-                    let form = form.unwrap();
-                    if form.is_some() {
-                        scope.listen(form.unwrap(), "submit", |event: Event| {
-                            if state_composing.get() {
-                                event.prevent_default();
-                            } else if state_completing.get() {
-                                event.prevent_default();
-                            }
-                        });
-                    }
-                }
-            }
         }))
     }
 }
@@ -485,10 +486,14 @@ impl ComboboxState {
 /// the visible input validates selection and never submits its search text.
 /// Optional empty input is valid; nonempty text needs an explicit choice.
 ///
-/// Classes in `attrs` go on the wrapper. Other attributes go on the input. IDs,
-/// form/value bindings, accessibility state and interaction handlers are reserved.
+/// Give the visible label [`ComboboxState::label_id`] as its ID and
+/// [`ComboboxState::input_id`] as its `for` attribute. Explicit `aria-label` or
+/// `aria-labelledby` in `attrs` names both the input and popup.
+/// Classes go on the wrapper. Other attributes go on the input. IDs, form/value
+/// bindings, accessibility state and interaction handlers are reserved.
 #[component]
 pub async fn combobox(
+    cx: &Cx,
     state: ComboboxState,
     name: &str,
     #[into]
@@ -543,6 +548,20 @@ pub async fn combobox(
                 .strip_prefix("data-topcoat-bind:")
                 .is_some_and(|key| reserved.contains(&key))
     }));
+    let mut popup_naming = Attributes::new();
+    popup_naming.extend(forwarded.iter().filter_map(|(key, value)| {
+        let name = key.as_str().to_ascii_lowercase();
+        let name = name.strip_prefix("data-topcoat-bind:").unwrap_or(&name);
+        if matches!(name, "aria-label" | "aria-labelledby") && value.is_present() {
+            Some((key.clone(), value.clone()))
+        } else {
+            None
+        }
+    }));
+    if popup_naming.iter().next().is_none() {
+        popup_naming.insert(cx, "aria-labelledby", state.label_id());
+    }
+    let input_ref = ElementRef::<InputElement>::new(state_input_id.clone());
     let current = state.current();
     let selected = state.value();
     let control = state.control(&disabled);
@@ -616,6 +635,16 @@ pub async fn combobox(
                         state_composing.set(true);
                         state_active.set(None);
                         state_pending.set(0i32);
+                        // requestSubmit() can dispatch before reactive effects run.
+                        let field = input_ref.resolve();
+                        if field.is_ok() {
+                            field
+                                .unwrap()
+                                .set_custom_validity(
+                                    "Finish entering text before submitting.",
+                                )
+                                .ok();
+                        }
                     })
                     @compositionend=(complete)
                     @keydown=(keyboard)
@@ -640,7 +669,7 @@ pub async fn combobox(
                 id=(&state_popup_id)
                 popover="auto"
                 role="listbox"
-                aria-labelledby=(&state_input_id)
+                (popup_naming)
                 class=(class!(
                     floating_variants(
                         FloatingAnchor::Scope,
@@ -650,7 +679,6 @@ pub async fn combobox(
                     "inset-auto m-0 max-h-64 w-72 max-w-[calc(100vw-2rem)] overflow-y-auto",
                     "rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm",
                     "supports-[anchor-name:--floating-anchor]:w-[anchor-size(width)]",
-                    "supports-[anchor-name:--floating-anchor]:absolute",
                     "not-supports-[anchor-name:--floating-anchor]:inset-0",
                     "not-supports-[anchor-name:--floating-anchor]:m-auto",
                     "not-supports-[anchor-name:--floating-anchor]:h-fit",
@@ -658,8 +686,10 @@ pub async fn combobox(
                 @toggle=$(|event: Event| {
                     if event.new_state.is_some() {
                         let open = event.new_state.unwrap() == "open";
-                        state_open.set(open);
-                        if !open {
+                        if open {
+                            state_open.set(true);
+                        } else {
+                            state_open.set(false);
                             state_active.set(None);
                             state_pending.set(0i32);
                         }
@@ -731,30 +761,14 @@ pub async fn combobox_results(
         }
         rows.push((choice, option.disabled));
     }
-    // Build a compiled expression over the server's eligible rows. No browser search
-    // or mutable scratch signals are needed to retain active identity after a reorder.
-    let mut retained: Expr<Option<Choice>> = None.into();
-    for choice in &eligible {
-        let value = &choice.value;
-        retained = expr!(if state_active.get().is_some() {
-            if state_active.get().unwrap().value == value {
-                Some(choice.clone())
-            } else {
-                retained
-            }
-        } else {
-            None
-        });
-    }
-    let choices = Choices {
-        rows: eligible,
-        revision,
-    };
+    let eligible = eligible.as_slice();
     let current = state.current();
     let accepted = after_render(expr!(|_scope: EffectContext| {
-        let choices = choices;
-        if state_search.get().revision == revision {
-            state_choices.set(Some(choices.clone()));
+        if state_search.read().revision == revision {
+            state_choices.set(Choices {
+                rows: eligible.to_vec(),
+                revision: Some(revision),
+            });
             state_default_selection.set(default);
             let selected_now = if state_selection.get().is_some() {
                 Some(state_selection.get().unwrap().value)
@@ -780,15 +794,29 @@ pub async fn combobox_results(
                     });
                 }
             }
+            // Reconcile callback-time identity against this accepted snapshot.
+            let rows = state_choices.read().rows.as_slice();
+            let active = state_active.get();
+            let retained = if active.is_some() {
+                let value = active.unwrap().value;
+                let position = rows.iter().position(|row| row.value == value);
+                if position.is_some() {
+                    Some(rows.index(position.unwrap()).clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             state_active.set(retained);
             if state_open.get() {
                 if state_focused.get() {
                     if !state_composing.get() {
-                        if !choices.rows.is_empty() {
+                        if !rows.is_empty() {
                             if state_pending.get() > 0i32 {
-                                state_active.set(Some(choices.rows.first().unwrap().clone()));
+                                state_active.set(Some(rows.first().unwrap().clone()));
                             } else if state_pending.get() < 0i32 {
-                                state_active.set(Some(choices.rows.last().unwrap().clone()));
+                                state_active.set(Some(rows.last().unwrap().clone()));
                             }
                         }
                     }
@@ -801,7 +829,7 @@ pub async fn combobox_results(
         <div
             (accepted)
             :hidden=$(if current {
-                state_search.get().revision != revision
+                state_search.read().revision != revision
             } else {
                 true
             })

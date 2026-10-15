@@ -200,6 +200,105 @@ it("commits a pointer choice without moving focus into the list", async () => {
 	expect(new FormData(form).get("region")).toBe("gamma");
 });
 
+for (const modifier of ["Shift", "Control", "Alt", "Meta"] as const) {
+	it(`consumes ${modifier}+Enter during an open interaction without submitting the prior value`, async () => {
+		const { input, form } = mount();
+		input.focus();
+		await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+		expect(active(input)?.textContent).toBe("Gamma");
+		await userEvent.keyboard(`{${modifier}>}{Enter}{/${modifier}}`);
+		expect(document.querySelector("#submits")?.textContent).toBe("0");
+		expect(new FormData(form).get("region")).toBe("gamma");
+		expect(input.getAttribute("aria-expanded")).toBe("false");
+	});
+}
+
+it("blocks the application's submit handler while a valid default is composing", async () => {
+	const { input, form } = mount();
+	expect(input.validity.valid).toBe(true);
+	expect(new FormData(form).get("region")).toBe("alpha");
+	input.dispatchEvent(
+		new CompositionEvent("compositionstart", { bubbles: true }),
+	);
+	// requestSubmit is intentionally synchronous, before any effect microtask.
+	form.requestSubmit();
+	flushEffects();
+	expect(document.querySelector("#submits")?.textContent).toBe("0");
+	expect(input.validity.customError).toBe(true);
+	form.requestSubmit();
+	flushEffects();
+	expect(document.querySelector("#submits")?.textContent).toBe("0");
+	form.reset();
+	await nativeTask();
+	flushEffects();
+	expect(input.validity.valid).toBe(true);
+	form.requestSubmit();
+	flushEffects();
+	expect(document.querySelector("#submits")?.textContent).toBe("1");
+});
+
+for (const [name, html, label] of [
+	["empty", fixture.empty, "Region"],
+	["populated", fixture.initial, "Region"],
+	["aria-label", fixture["aria-label"], "Deploy region"],
+	["aria-labelledby", fixture["aria-labelledby"], "Region caption"],
+] as const) {
+	it(`names the ${name} popup from the control's label`, async () => {
+		const { input } = mount(html);
+		input.focus();
+		await userEvent.keyboard("{ArrowDown}");
+		await expect
+			.element(page.getByRole("combobox", { name: label, exact: true }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole("listbox", { name: label, exact: true }))
+			.toBeVisible();
+	});
+}
+
+it("initializes an actual Rust-rendered large catalog and retains the identity active at response time", async () => {
+	const { input, form, popup } = mount();
+	input.focus();
+	await userEvent.keyboard("{ArrowDown}");
+	expect(active(input)?.textContent).toBe("Alpha");
+	const refreshed = results().refresh();
+	await expect.poll(() => requests.length).toBe(1);
+	await userEvent.keyboard("{ArrowDown}");
+	const gamma = active(input);
+	expect(gamma?.textContent).toBe("Gamma");
+	await reply(0, fixture.catalog.large);
+	await refreshed;
+	flushEffects();
+	expect(errors).toEqual([]);
+	expect(popup.querySelectorAll('[role="option"]')).toHaveLength(1000);
+	expect(active(input)).toBe(gamma);
+	await expect
+		.element(page.getByRole("option", { name: "Gamma", exact: true }))
+		.toBeVisible();
+	await userEvent.keyboard("{ArrowUp}{Enter}");
+	expect(new FormData(form).get("region")).toBe("alpha");
+	expect(document.activeElement).toBe(input);
+});
+
+for (const version of ["active_removed", "active_disabled"] as const) {
+	it(`clears an ${version} identity while preserving the eligible committed value`, async () => {
+		const { input, form, popup } = mount();
+		input.focus();
+		await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+		expect(active(input)?.textContent).toBe("Gamma");
+		accept(fixture.catalog[version]);
+		expect(active(input)).toBeNull();
+		expect(new FormData(form).get("region")).toBe("alpha");
+		expect(popup.matches(":popover-open")).toBe(true);
+		await userEvent.keyboard("{ArrowDown}");
+		expect(active(input)?.textContent).toBe("Alpha");
+		accept(fixture.catalog.reordered);
+		expect(active(input)?.textContent).toBe("Alpha");
+		await userEvent.keyboard("{ArrowUp}{Enter}");
+		expect(new FormData(form).get("region")).toBe("gamma");
+	});
+}
+
 it("honors canceled native opening and keeps closed Enter submission native", async () => {
 	const { input, form, popup } = mount();
 	let submits = 0;
@@ -241,8 +340,13 @@ it("leaves stale results unusable after transport failure and accepts a retry", 
 	edit(input, "zz");
 	await reply(1, fixture.search.zz2);
 	await expect
-		.element(page.getByRole("status").filter({ hasText: "No matches." }))
-		.toBeVisible();
+		.poll(() => document.querySelectorAll('[role="option"]').length)
+		.toBe(0);
+	expect(
+		[...document.querySelectorAll('[role="status"]')].filter((node) =>
+			node.checkVisibility(),
+		),
+	).toHaveLength(1);
 	expect(active(input)).toBeNull();
 });
 
@@ -343,7 +447,11 @@ it("isolates multiple controls and keeps their nodes through keyed reordering", 
 	if (!first || !second) throw new Error("Missing controls");
 	expect(first.id).not.toBe(second.id);
 	first.focus();
-	await userEvent.keyboard("{ArrowDown}{Enter}");
+	await userEvent.keyboard("{ArrowDown}");
+	await expect
+		.element(page.getByRole("listbox", { name: "one", exact: true }))
+		.toBeVisible();
+	await userEvent.keyboard("{Enter}");
 	expect(first.value).toBe("Alpha");
 	expect(second.value).toBe("");
 	runtime.page.replaceContent(
@@ -357,6 +465,11 @@ it("isolates multiple controls and keeps their nodes through keyed reordering", 
 	]);
 	expect(first.value).toBe("Alpha");
 	expect(second.value).toBe("");
+	second.focus();
+	await userEvent.keyboard("{ArrowDown}");
+	await expect
+		.element(page.getByRole("listbox", { name: "two", exact: true }))
+		.toBeVisible();
 });
 
 it("respects native fieldset disabling when an old option remains open", async () => {
@@ -470,4 +583,31 @@ it("disposes native listeners and queued reset work with the owner", async () =>
 	form.reset();
 	await nativeTask();
 	expect(errors).toEqual([]);
+});
+
+it("disposes the control on navigation and rejects its delayed result", async () => {
+	const { input } = mount();
+	input.focus();
+	edit(input, "ga");
+	await expect.poll(() => requests.length).toBe(1);
+	const navigation = runtime.navigation.navigate(
+		new URL(location.href),
+		"replace",
+	);
+	await expect.poll(() => requests.length).toBe(2);
+	const doctype = document.doctype
+		? new XMLSerializer().serializeToString(document.doctype)
+		: "";
+	await reply(
+		1,
+		`${doctype}<html><head>${document.head.innerHTML}</head><body><main id="destination">Next page</main></body></html>`,
+	);
+	await navigation;
+	await reply(0, fixture.search.ga1);
+	await nativeTask();
+	flushEffects();
+	expect(document.querySelector("#destination")).not.toBeNull();
+	expect(document.querySelector('[role="combobox"]')).toBeNull();
+	expect(input.isConnected).toBe(false);
+	expect(document.activeElement).not.toBe(input);
 });

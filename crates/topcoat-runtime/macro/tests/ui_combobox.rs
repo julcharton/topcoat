@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use topcoat::{
     Result,
     context::Cx,
-    runtime::{SignalValues, shard},
+    runtime::{Event, SignalValues, shard, signal},
     view::{View, ViewExt, attributes, component, view},
 };
 
@@ -32,6 +32,18 @@ fn catalog(version: &str) -> Vec<ComboboxOption> {
     })
     .collect::<Vec<_>>();
     match version {
+        "large" => {
+            options.extend((5..1000).map(|index| ComboboxOption {
+                value: format!("value-{index}"),
+                label: format!("Option {index}"),
+                disabled: false,
+            }));
+            // Put Gamma at the far end so retaining it must inspect the new data
+            // and update its navigation index rather than reuse the old position.
+            options.rotate_left(3);
+        }
+        "active_removed" => options.retain(|option| option.value != "gamma"),
+        "active_disabled" => options[2].disabled = true,
         "removed" => options.retain(|option| option.value != "alpha"),
         "disabled" => options[0].disabled = true,
         "renamed" => "New Alpha".clone_into(&mut options[0].label),
@@ -55,24 +67,46 @@ async fn harness(
     #[default(false)] required: bool,
     #[default(false)] disabled: bool,
     #[default("owner")] owner: &str,
+    #[default("Region")] label: &str,
+    #[default("")] naming: &str,
 ) -> Result<impl View> {
     // Initial selection is stable while the shard's catalog changes independently.
     let options = catalog("initial");
     let state = ComboboxState::new(cx, &options, default)?;
+    let submits = signal(cx, || 0usize);
+    let caption = format!("{owner}-caption");
     Ok(view! {
-        <form id=(owner)>
+        <form
+            id=(owner)
+            @submit=$(|event: Event| {
+                event.prevent_default();
+                submits.increment();
+            })
+        >
             <button type="reset">"Reset"</button>
             <button>"Submit"</button>
         </form>
+        <output id="submits">$(submits.get())</output>
         <fieldset id="fieldset">
-            <label for=(state.input_id())>"Region"</label>
+            <label id=(state.label_id()) for=(state.input_id())>(label)</label>
+            <span id=(&caption)>"Region caption"</span>
             combobox(
                 state: state.clone(),
                 name: "region",
                 form: Some(owner),
                 required: required,
                 disabled: disabled,
-                attrs: attributes! { placeholder="Choose a region" aria-describedby="hint" },
+                attrs: attributes! {
+                    placeholder="Choose a region"
+                    aria-describedby="hint"
+                    if naming == "aria-label" {
+                        aria-label="Deploy region"
+                    }
+                    if naming == "aria-labelledby" {
+                        aria-labelledby=(&caption)
+                        aria-label="Unused name"
+                    }
+                },
                 results(state: state.clone(), version: version.to_owned())
             )
             <p id="hint">"Choose an available region."</p>
@@ -88,7 +122,7 @@ async fn multiple(keys: &[&str]) -> String {
             cx =>
             #[key(key)]
             for key in keys {
-                harness(version: "initial", default: None, owner: key)
+                harness(version: "initial", default: None, owner: key, label: key)
             }
         }
         .single()
@@ -236,6 +270,16 @@ async fn compiled_combobox_fixture_is_current() {
     .into();
     fixture["multiple"] = multiple(&["one", "two"]).await.into();
     fixture["reordered"] = multiple(&["two", "one"]).await.into();
+    for naming in ["aria-label", "aria-labelledby"] {
+        fixture[naming] = stable_html(
+            &view! { cx => harness(version: "initial", default: None, naming: naming) }
+                .single()
+                .await
+                .unwrap()
+                .render(cx),
+        )
+        .into();
+    }
     for (name, query, revision) in [
         ("ga1", "ga", 1),
         ("zz2", "zz", 2),
@@ -253,7 +297,15 @@ async fn compiled_combobox_fixture_is_current() {
         fixture["search"][name] = result_html(&html).into();
     }
     // The full catalog is authoritative for selection/default reconciliation.
-    for version in ["removed", "disabled", "renamed", "reordered"] {
+    for version in [
+        "removed",
+        "disabled",
+        "renamed",
+        "reordered",
+        "large",
+        "active_removed",
+        "active_disabled",
+    ] {
         let html = render(json!({}), version, Some("alpha")).await;
         fixture["catalog"][version] = result_html(&html).into();
     }
@@ -339,4 +391,31 @@ async fn unicode_search_is_server_only_and_preserves_order_and_duplicate_labels(
     .await;
     assert!(!result_html(&empty).contains("role=\"option\""));
     assert!(result_html(&empty).contains("role=\"status\""));
+}
+
+#[tokio::test]
+async fn accepted_result_code_has_constant_structure_as_the_catalog_grows() {
+    fn without_rows(html: &str, expected_rows: usize) -> String {
+        let encoded = html
+            .split_once("data-topcoat-after-render=\"")
+            .unwrap()
+            .1
+            .split_once('"')
+            .unwrap()
+            .0;
+        let source = encoded.replace("&quot;", "\"").replace("&amp;", "&");
+        let capture = "cx.hydrate({\"t\":\"Slice\"";
+        assert_eq!(source.matches(capture).count(), 1);
+        let start = source.find(capture).unwrap() + "cx.hydrate(".len();
+        // Decode the generated row JSON, preserving every executable byte.
+        let mut json = serde_json::Deserializer::from_str(&source[start..]).into_iter::<Value>();
+        let rows = json.next().unwrap().unwrap();
+        assert_eq!(rows["v"].as_array().unwrap().len(), expected_rows);
+        let end = start + json.byte_offset();
+        assert!(source[end..].starts_with(')'));
+        format!("{}ROWS{}", &source[..start], &source[end..])
+    }
+    let small = render(json!({}), "initial", Some("alpha")).await;
+    let large = render(json!({}), "large", Some("alpha")).await;
+    assert_eq!(without_rows(&small, 4), without_rows(&large, 999));
 }
