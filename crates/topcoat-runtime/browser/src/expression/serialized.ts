@@ -29,10 +29,18 @@ export interface SerializedSequence {
 export interface SerializedElementRef {
 	t: "ElementRef";
 	id: string;
-	kind: "html" | "input" | "dialog";
+	kind: "html" | "input" | "select" | "textarea" | "dialog";
+}
+
+export interface SerializedScrollIntoViewOptions {
+	t: "ScrollIntoViewOptions";
+	block: ScrollLogicalPosition;
+	inline: ScrollLogicalPosition;
+	behavior: ScrollBehavior;
 }
 
 export type DehydratedSurrogate =
+	| SerializedScrollIntoViewOptions
 	| SerializedElementRef
 	| SerializedInteger
 	| SerializedSequence

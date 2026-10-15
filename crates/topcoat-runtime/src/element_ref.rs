@@ -210,6 +210,16 @@ element_type!(
     "A browser-only handle to an HTML input element."
 );
 element_type!(
+    SelectElement,
+    "select",
+    "A browser-only handle to an HTML select element."
+);
+element_type!(
+    TextAreaElement,
+    "textarea",
+    "A browser-only handle to an HTML textarea element."
+);
+element_type!(
     DialogElement,
     "dialog",
     "A browser-only handle to an HTML dialog element."

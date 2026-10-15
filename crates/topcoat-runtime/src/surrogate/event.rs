@@ -5,7 +5,7 @@
 
 use std::marker::PhantomData;
 
-use crate::{BoolSurrogate, F64Surrogate, StringSurrogate};
+use crate::{BoolSurrogate, F64Surrogate, StringSurrogate, Surrogate, Surrogated};
 
 pub struct Event {
     pub alt_key: BoolSurrogate,
@@ -59,10 +59,27 @@ impl Event {
     }
 }
 
+#[derive(Debug)]
 pub struct EventTarget {
     pub checked: BoolSurrogate,
     pub id: StringSurrogate,
     pub name: StringSurrogate,
     pub text_content: StringSurrogate,
     pub value: StringSurrogate,
+}
+
+impl Surrogated for EventTarget {
+    type Surrogate = Self;
+
+    fn into_surrogate(self) -> Self {
+        self
+    }
+}
+
+impl Surrogate for EventTarget {
+    type Real = Self;
+
+    fn into_real(self) -> Self {
+        self
+    }
 }

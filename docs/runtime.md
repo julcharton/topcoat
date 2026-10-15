@@ -157,11 +157,135 @@ Ok(view! {
 # }
 ```
 
-Use [`HtmlElement`] for any HTML element, [`InputElement`] for an input, and [`DialogElement`] for a dialog. `resolve()` looks up the current document each time. It returns a typed handle on success and an [`ElementRefError`] when the ID is missing or the element has the wrong type. The error exposes `is_missing()` and `is_wrong_type()` inside expressions.
+Use [`HtmlElement`] for any HTML element, [`InputElement`] for an input, [`SelectElement`] for a select, [`TextAreaElement`] for a textarea, and [`DialogElement`] for a dialog. `resolve()` looks up the current document each time. It returns a typed handle on success and an [`ElementRefError`] when the ID is missing or the element has the wrong type. The error exposes `is_missing()` and `is_wrong_type()` inside expressions.
 
 Resolve inside a browser event-handler closure. Evaluating resolution on the server panics. A reference captures only its ID and type. Resolved handles cannot be captured, stored in signals, or sent in requests. Resolve again after an `await` or a DOM update, since a previously resolved handle still refers to the node that call found. DOM changes do not trigger reactive evaluation.
 
 IDs must be unique in the document. Follow the [`element_id`](../view/fn.element_id.html) identity rules for keyed components and helpers. References use those same IDs across shard rerenders, live updates, and navigation. Removing an element makes the next resolution fail; inserting a matching replacement makes it resolve to the replacement. References do not keep removed nodes alive. Lookup covers the current document, not shadow roots or other frames.
+
+# Browser actions
+
+Resolved handles expose native browser operations inside `expr!` handlers. Focus accepts a `prevent_scroll` boolean. Scroll options use typed alignment and behavior values, constructed outside the expression:
+
+```rust
+# use topcoat::{Result, context::Cx, view::*};
+use topcoat::runtime::{
+    ElementRef, InputElement, ScrollAlignment, ScrollBehavior, ScrollIntoViewOptions,
+};
+
+# #[component]
+# async fn example(cx: &Cx) -> Result<impl View> {
+let input = ElementRef::<InputElement>::new(element_id(cx));
+let scroll = ScrollIntoViewOptions {
+    block: ScrollAlignment::Center,
+    inline: ScrollAlignment::Nearest,
+    behavior: ScrollBehavior::Smooth,
+};
+
+Ok(view! {
+    <input id=(input.id())>
+    <button @click=$(|_e| {
+        let result = input.resolve();
+        if result.is_ok() {
+            let element = result.unwrap();
+            element.scroll_into_view(scroll).unwrap();
+            element.focus(true).unwrap();
+        }
+    })>"Reveal input"</button>
+})
+# }
+```
+
+`focus(true)` prevents focus from scrolling. Its `Ok(bool)` reports whether the element is active immediately after the call. Disabled, inert, or unfocusable elements can return `Ok(false)`. Scrolling returns `Ok(())` when the native request is accepted. Hidden elements may not scroll, and smooth scrolling completes later. `ScrollAlignment` supports `Start`, `Center`, `End`, and `Nearest` independently for block and inline axes. `ScrollBehavior` supports `Auto` (follow CSS), `Instant`, and `Smooth`. The default options are block start, inline nearest, and auto.
+
+## Containment and form validity
+
+Every HTML handle supports `contains(event.target)`, which returns `Ok(true)` for the element itself or a DOM descendant. Null and non-Node targets return `Ok(false)`. Containment follows the DOM tree, not the composed event path across shadow roots. With an optional related target, check for presence before unwrapping it; absence means the focus moved outside.
+
+Inputs, selects, and textareas support `set_custom_validity(message)` and `report_validity()`. An empty message clears the custom error. Reporting returns the native validity boolean and allows the browser to display validation UI. Canceling the `invalid` event suppresses that UI but does not change the returned validity. Disabled and other controls barred from constraint validation retain their native behavior.
+
+```rust
+# use topcoat::{Result, context::Cx, view::*};
+use topcoat::runtime::{ElementRef, Event, InputElement};
+
+# #[component]
+# async fn example(cx: &Cx) -> Result<impl View> {
+let input = ElementRef::<InputElement>::new(element_id(cx));
+Ok(view! {
+    <input id=(input.id()) required="" @input=$(|_e: Event| {
+        input.resolve().unwrap().set_custom_validity("").unwrap();
+    })>
+    <button @click=$(|_e| {
+        let element = input.resolve().unwrap();
+        element.set_custom_validity("Choose an available name").unwrap();
+        element.report_validity().unwrap();
+    })>"Check name"</button>
+})
+# }
+```
+
+A control's `form_target()` returns `Result<Option<EventTarget>, BrowserActionError>`. It uses the current native form owner, including an external form named by the `form` attribute. The target can be passed to a scoped listener API to observe `reset`. An unowned control returns `Ok(None)`. The target is a snapshot, cannot be serialized, and does not install a listener itself.
+
+## Popovers and modal dialogs
+
+Use declarative `popover` and `popovertarget` attributes for native popover buttons. When a handler needs to open or close a popover, call `show_popover()` or `hide_popover()` on its HTML handle. Both return the resulting open state. Canceling the native opening `beforetoggle` event can make `show_popover()` return `Ok(false)`. Already open or already closed is a successful no-op. Native toggle events, auto-popover grouping, and light dismissal remain in effect.
+
+A dialog handle supports `show_modal()` and `close(return_value)`. Showing returns whether the dialog is open afterward. Closing returns `Ok(())` and preserves native focus restoration and `close` events. Calling `close` does not dispatch `cancel`; a native Escape request does. An already modal dialog can be shown again. An already closed dialog ignores `close` and keeps its return value.
+
+```rust
+# use topcoat::{Result, context::Cx, view::*};
+use topcoat::runtime::{DialogElement, ElementRef, HtmlElement};
+
+# #[component]
+# async fn example(cx: &Cx) -> Result<impl View> {
+let popover = ElementRef::<HtmlElement>::new(element_id(cx));
+let dialog = ElementRef::<DialogElement>::new(element_id(cx));
+Ok(view! {
+    <button popovertarget=(popover.id())>"More"</button>
+    <div id=(popover.id()) popover="auto">
+        <button @click=$(|_e| {
+            popover.resolve().unwrap().hide_popover().unwrap();
+            dialog.resolve().unwrap().show_modal().unwrap();
+        })>"Open dialog"</button>
+    </div>
+    <dialog id=(dialog.id())>
+        <p>"Native modal content"</p>
+        <button autofocus="" @click=$(|_e| {
+            dialog.resolve().unwrap().close("done").unwrap();
+        })>"Close"</button>
+    </dialog>
+})
+# }
+```
+
+## Failure handling
+
+Actions return `Result<_, BrowserActionError>` inside expressions. Inspect the error with `is_disconnected()`, `is_unsupported()`, or `is_invalid_state()`. A disconnected handle is rejected before a native operation, and removal during a synchronous native event is also reported as disconnected. Resolve again to act on a replacement. Missing IDs and wrong native types remain `ElementRefError` outcomes from `resolve()`.
+
+An unavailable native method reports unsupported. Invalid native state includes a missing `popover` attribute, an already non-modal open dialog, or a dialog currently shown as a popover. Native cancellation is a normal outcome, not an error. Unexpected JavaScript exceptions propagate. These APIs use native browser behavior without a polyfill. Calling them during server evaluation is rejected. Resolved handles, action errors, and event targets cannot be captured or sent through signals or requests.
+
+Operations are restricted to the appropriate handle type:
+
+```compile_fail
+use topcoat::runtime::{ElementRef, HtmlElement, expr};
+let element = ElementRef::<HtmlElement>::new("field");
+let _ = expr!(|| element.resolve().unwrap().set_custom_validity("Invalid"));
+```
+
+```compile_fail
+use topcoat::runtime::{ElementRef, InputElement, expr};
+let element = ElementRef::<InputElement>::new("field");
+let _ = expr!(|| element.resolve().unwrap().show_modal());
+```
+
+Form targets cannot be captured:
+
+```compile_fail
+use topcoat::runtime::{EventTarget, expr};
+fn capture(target: EventTarget) {
+    let _ = expr!(target);
+}
+```
 
 # Bind attributes
 
@@ -340,6 +464,8 @@ Use `.get_untracked()` or `.read_untracked()` to read a value on the server with
 [`ElementRefError`]: struct.ElementRefError.html
 [`HtmlElement`]: struct.HtmlElement.html
 [`InputElement`]: struct.InputElement.html
+[`SelectElement`]: struct.SelectElement.html
+[`TextAreaElement`]: struct.TextAreaElement.html
 [`DialogElement`]: struct.DialogElement.html
 [`Expr::dynamic`]: struct.Expr.html#method.dynamic
 [`expr!`]: macro.expr.html

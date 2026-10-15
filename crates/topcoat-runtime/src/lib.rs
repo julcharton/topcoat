@@ -2,6 +2,7 @@
 
 mod arguments;
 mod bind_attribute;
+mod browser_action;
 mod connection;
 mod element_ref;
 mod event_handler;
@@ -25,6 +26,7 @@ mod surrogate;
 
 pub use arguments::*;
 pub use bind_attribute::*;
+pub use browser_action::*;
 pub use connection::*;
 pub use element_ref::*;
 pub use event_handler::*;

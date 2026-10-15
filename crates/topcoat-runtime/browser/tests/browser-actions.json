@@ -1,0 +1,39 @@
+{
+	"close": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"dialog\",\"kind\":\"dialog\"})).resolve().unwrap().close(cx.hydrate({\"t\":\"str\",\"v\":\"accepted\"}))",
+	"contains": "(__local0) => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().contains(__local0.target)",
+	"focus": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"field\",\"kind\":\"input\"})).resolve().unwrap().focus(cx.hydrate(true))",
+	"focus_scroll": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"field\",\"kind\":\"input\"})).resolve().unwrap().focus(cx.hydrate(false))",
+	"form_error": "(__local0) => __local0.form_target().unwrap_err().is_disconnected()",
+	"hide_popover": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().hide_popover()",
+	"input": {
+		"clear": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"field\",\"kind\":\"input\"})).resolve().unwrap().set_custom_validity(cx.hydrate({\"t\":\"str\",\"v\":\"\"}))",
+		"form": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"field\",\"kind\":\"input\"})).resolve().unwrap().form_target()",
+		"report": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"field\",\"kind\":\"input\"})).resolve().unwrap().report_validity()",
+		"set": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"field\",\"kind\":\"input\"})).resolve().unwrap().set_custom_validity(cx.hydrate({\"t\":\"str\",\"v\":\"Choose a value\"}))"
+	},
+	"keyed": "<input id=\"tc-frWBtH67U3xcODqDnzdMFA\" data-key=\"1\"><button data-key=\"1\" data-topcoat-on:click=\"(__local0) => { (cx.hydrate({&quot;t&quot;:&quot;ElementRef&quot;,&quot;id&quot;:&quot;tc-frWBtH67U3xcODqDnzdMFA&quot;,&quot;kind&quot;:&quot;input&quot;})).resolve().unwrap().focus(cx.hydrate(true)).unwrap();  }\">Focus</button><input id=\"tc-NiBQNGiO9Y5sjNMHF71P1g\" data-key=\"2\"><button data-key=\"2\" data-topcoat-on:click=\"(__local0) => { (cx.hydrate({&quot;t&quot;:&quot;ElementRef&quot;,&quot;id&quot;:&quot;tc-NiBQNGiO9Y5sjNMHF71P1g&quot;,&quot;kind&quot;:&quot;input&quot;})).resolve().unwrap().focus(cx.hydrate(true)).unwrap();  }\">Focus</button>",
+	"reordered": "<input id=\"tc-NiBQNGiO9Y5sjNMHF71P1g\" data-key=\"2\"><button data-key=\"2\" data-topcoat-on:click=\"(__local0) => { (cx.hydrate({&quot;t&quot;:&quot;ElementRef&quot;,&quot;id&quot;:&quot;tc-NiBQNGiO9Y5sjNMHF71P1g&quot;,&quot;kind&quot;:&quot;input&quot;})).resolve().unwrap().focus(cx.hydrate(true)).unwrap();  }\">Focus</button><input id=\"tc-frWBtH67U3xcODqDnzdMFA\" data-key=\"1\"><button data-key=\"1\" data-topcoat-on:click=\"(__local0) => { (cx.hydrate({&quot;t&quot;:&quot;ElementRef&quot;,&quot;id&quot;:&quot;tc-frWBtH67U3xcODqDnzdMFA&quot;,&quot;kind&quot;:&quot;input&quot;})).resolve().unwrap().focus(cx.hydrate(true)).unwrap();  }\">Focus</button>",
+	"scroll": {
+		"auto": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"start\",\"inline\":\"nearest\",\"behavior\":\"auto\"})))",
+		"center": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"center\",\"inline\":\"center\",\"behavior\":\"instant\"})))",
+		"end": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"end\",\"inline\":\"end\",\"behavior\":\"instant\"})))",
+		"mixed": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"end\",\"inline\":\"center\",\"behavior\":\"instant\"})))",
+		"nearest": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"nearest\",\"inline\":\"nearest\",\"behavior\":\"instant\"})))",
+		"smooth": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"start\",\"inline\":\"nearest\",\"behavior\":\"smooth\"})))",
+		"start": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().scroll_into_view((cx.hydrate({\"t\":\"ScrollIntoViewOptions\",\"block\":\"start\",\"inline\":\"start\",\"behavior\":\"instant\"})))"
+	},
+	"select": {
+		"clear": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"select\",\"kind\":\"select\"})).resolve().unwrap().set_custom_validity(cx.hydrate({\"t\":\"str\",\"v\":\"\"}))",
+		"form": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"select\",\"kind\":\"select\"})).resolve().unwrap().form_target()",
+		"report": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"select\",\"kind\":\"select\"})).resolve().unwrap().report_validity()",
+		"set": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"select\",\"kind\":\"select\"})).resolve().unwrap().set_custom_validity(cx.hydrate({\"t\":\"str\",\"v\":\"Choose a value\"}))"
+	},
+	"show_modal": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"dialog\",\"kind\":\"dialog\"})).resolve().unwrap().show_modal()",
+	"show_popover": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"container\",\"kind\":\"html\"})).resolve().unwrap().show_popover()",
+	"textarea": {
+		"clear": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"textarea\",\"kind\":\"textarea\"})).resolve().unwrap().set_custom_validity(cx.hydrate({\"t\":\"str\",\"v\":\"\"}))",
+		"form": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"textarea\",\"kind\":\"textarea\"})).resolve().unwrap().form_target()",
+		"report": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"textarea\",\"kind\":\"textarea\"})).resolve().unwrap().report_validity()",
+		"set": "() => (cx.hydrate({\"t\":\"ElementRef\",\"id\":\"textarea\",\"kind\":\"textarea\"})).resolve().unwrap().set_custom_validity(cx.hydrate({\"t\":\"str\",\"v\":\"Choose a value\"}))"
+	}
+}
