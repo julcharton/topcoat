@@ -164,8 +164,18 @@ async fn picker(
         &required,
         &DateValidation::rules_key(&rules),
     );
+    let accepted = validation.accepted.clone();
+    let revision = validation.revision.clone();
+    let single = state.selection.single.clone();
+    let range = state.selection.range.clone();
+    let is_range = state.selection.is_range;
+    let close = state.close.clone();
+    let open = state.open.clone();
+    let wants_focus = state.wants_focus.clone();
+    let queue = state.commands.clone();
+    let request = state.request.clone();
     let error = expr!(if current {
-        validation.accepted.get().error
+        accepted.get().error
     } else {
         "Checking date...".to_owned()
     });
@@ -175,19 +185,19 @@ async fn picker(
     let group = element_id(cx);
     let reset = reset_effect(&state, &validation, &defaults, reset_cursor);
     let dismiss = effect(expr!(|_scope: EffectContext| {
-        let close = state.close.get();
+        let closing = close.get();
         if disabled {
-            state.wants_focus.set(false);
-            state.open.set(false);
+            wants_focus.set(false);
+            open.set(false);
             let panel = popup.resolve();
             if panel.is_ok() {
                 let _closed = panel.unwrap().hide_popover();
             }
         } else {
-            if close {
-                state.wants_focus.set(false);
-                let was_open = state.open.get();
-                state.open.set(false);
+            if closing {
+                wants_focus.set(false);
+                let was_open = open.get();
+                open.set(false);
                 let panel = popup.resolve();
                 if panel.is_ok() {
                     let _closed = panel.unwrap().hide_popover();
@@ -200,23 +210,24 @@ async fn picker(
                 }
             }
         }
-        if close {
-            state.close.set(false);
+        if closing {
+            close.set(false);
         }
     }));
     Ok(view! {
         <div
             data-date-picker=""
+            :data-date-pending=$(if current { "false" } else { "true" })
             class=(class!("space-y-2", attrs.remove("class")))
             (attrs)
             (reset)
         >
-            if state.selection.is_range {
+            if is_range {
                 <p id=(&group) class="text-sm font-medium">(label)</p>
             }
             <div
-                role=(state.selection.is_range.then_some("group"))
-                aria-labelledby=(state.selection.is_range.then_some(&group))
+                role=(is_range.then_some("group"))
+                aria-labelledby=(is_range.then_some(&group))
                 class="flex flex-wrap items-end gap-2"
             >
                 date_input(
@@ -224,7 +235,7 @@ async fn picker(
                     validation: validation.clone(),
                     error: error.clone(),
                     name: names.0,
-                    label: if state.selection.is_range { "Start date" } else { label },
+                    label: if is_range { "Start date" } else { label },
                     default_value: defaults.start,
                     end: false,
                     required: required.clone(),
@@ -233,7 +244,7 @@ async fn picker(
                     description: &description,
                     attrs: start_attrs
                 )
-                if state.selection.is_range {
+                if is_range {
                     date_input(
                         selection: state.selection.clone(),
                         validation: validation.clone(),
@@ -257,6 +268,23 @@ async fn picker(
                     :disabled=(disabled.clone())
                     class="h-9 rounded-lg border border-border px-3 text-sm hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40"
                     (dismiss)
+                    @focusout=$(|event: Event| {
+                        if event.related_target.is_some() {
+                            let panel = popup.resolve();
+                            if panel.is_ok() {
+                                let contained = panel
+                                    .unwrap()
+                                    .contains(event.related_target.unwrap());
+                                if contained.is_ok() {
+                                    if !contained.unwrap() {
+                                        wants_focus.set(false);
+                                    }
+                                }
+                            }
+                        } else {
+                            wants_focus.set(false);
+                        }
+                    })
                 >
                     "Choose date"
                 </button>
@@ -270,15 +298,15 @@ async fn picker(
                     class="ml-2 underline"
                     @click=$(|_event: Event| {
                         if !disabled {
-                            if state.selection.is_range {
-                                state.selection.range.set(
+                            if is_range {
+                                range.set(
                                     DateRangeValue { start: "".to_owned(), end: "".to_owned() },
                                 );
                             } else {
-                                state.selection.single.set("".to_owned());
+                                single.set("".to_owned());
                             }
-                            validation.revision.increment();
-                            state.close.set(true);
+                            revision.increment();
+                            close.set(true);
                         }
                     })
                 >
@@ -289,7 +317,7 @@ async fn picker(
                     :hidden=$(current)
                     :disabled=(disabled.clone())
                     class="ml-2 underline"
-                    @click=$(|_event: Event| validation.revision.increment())
+                    @click=$(|_event: Event| revision.increment())
                 >
                     "Retry"
                 </button>
@@ -316,30 +344,33 @@ async fn picker(
                 @beforetoggle=$(|event: Event| {
                     if event.new_state.is_some() {
                         if event.new_state.unwrap() == "closed" {
-                            state.wants_focus.set(false);
-                            state.open.set(false);
+                            wants_focus.set(false);
+                            open.set(false);
+                        } else {
+                            if !disabled {
+                                wants_focus.set(true);
+                            }
                         }
                     }
                 })
                 @toggle=$(|event: Event| {
                     if event.new_state.is_some() {
-                        let open = event.new_state.unwrap() == "open";
-                        state.open.set(open);
-                        if open {
+                        let opening = event.new_state.unwrap() == "open";
+                        open.set(opening);
+                        if opening {
                             if !disabled {
-                                state.commands.set("o".to_owned());
-                                state.wants_focus.set(true);
-                                state.request.increment();
+                                queue.set("o".to_owned());
+                                request.increment();
                             }
                         } else {
-                            state.wants_focus.set(false);
+                            wants_focus.set(false);
                         }
                     }
                 })
                 @keydown=$(|event: Event| {
                     if event.key == "Escape" {
                         event.prevent_default();
-                        state.close.set(true);
+                        close.set(true);
                     }
                 })
             >

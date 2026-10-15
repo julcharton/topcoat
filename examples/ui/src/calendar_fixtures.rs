@@ -62,7 +62,7 @@ async fn fixtures(cx: &Cx) -> Result<impl View> {
                 <button type="button" id="outside">"Outside focus"</button>
                 <form id="dates-form" class="space-y-5">
                     date_picker(
-                        value: single,
+                        value: single.clone(),
                         today: today,
                         name: "single",
                         label: "Single date",
@@ -95,6 +95,31 @@ async fn fixtures(cx: &Cx) -> Result<impl View> {
                         @click=$(|_e: Event| disabled.toggle())
                     >
                         "Toggle disabled"
+                    </button>
+                    <button
+                        type="button"
+                        id="app-date"
+                        @click=$(|_e: Event| single.set("2024-04-20".to_owned()))
+                    >
+                        "Set application date"
+                    </button>
+                    <button
+                        type="button"
+                        id="app-same-date"
+                        @click=$(|_e: Event| single.set(single.get()))
+                    >
+                        "Write current application date"
+                    </button>
+                    <button
+                        type="button"
+                        id="app-roundtrip-date"
+                        @click=$(|_e: Event| {
+                            let previous = single.get();
+                            single.set("2024-04-20".to_owned());
+                            single.set(previous);
+                        })
+                    >
+                        "Restore application date in one task"
                     </button>
                     <button type="reset" id="reset-form">"Reset"</button>
                     <button type="submit" id="submit-form">"Submit"</button>

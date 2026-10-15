@@ -63,23 +63,16 @@ impl DateValidation {
     pub fn current(&self, selection: &Selection, required: &Expr<bool>, key: &str) -> Expr<bool> {
         let required = required.clone();
         let key = key.to_owned();
-        let validation = self.clone();
-        let selection = selection.clone();
+        let accepted = self.accepted.clone();
+        let revision = self.revision.clone();
+        let same_value =
+            selection.matches(&expr!(accepted.get().start), &expr!(accepted.get().end));
         expr!({
-            let accepted = validation.accepted.get();
-            let same_value = if selection.is_range {
-                if selection.range.get().start == accepted.start {
-                    selection.range.get().end == accepted.end
-                } else {
-                    false
-                }
-            } else {
-                selection.single.get() == accepted.start
-            };
+            let accepted = accepted.get();
             if same_value {
                 if accepted.required == required {
                     if accepted.rules == key {
-                        accepted.revision == validation.revision.get()
+                        accepted.revision == revision.get()
                     } else {
                         false
                     }
@@ -111,19 +104,13 @@ pub(super) async fn date_validation(
         revision,
         error,
     };
+    let current = selection.matches(&accepted.start.clone().into(), &accepted.end.clone().into());
+    let live_revision = validation.revision.clone();
+    let live_accepted = validation.accepted.clone();
     let install = after_render(expr!(|_scope: EffectContext| {
-        let current = if selection.is_range {
-            if selection.range.get().start == accepted.start {
-                selection.range.get().end == accepted.end
-            } else {
-                false
-            }
-        } else {
-            selection.single.get() == accepted.start
-        };
         if current {
-            if validation.revision.get() == revision {
-                validation.accepted.set(accepted);
+            if live_revision.get() == revision {
+                live_accepted.set(accepted);
             }
         }
     }));
@@ -146,6 +133,11 @@ pub(super) async fn date_input(
     description: &str,
     mut attrs: Attributes,
 ) -> Result<impl View> {
+    let is_range = selection.is_range;
+    let range = selection.range.clone();
+    let single = selection.single.clone();
+    let revision = validation.revision.clone();
+
     let id = match attrs.remove("id") {
         Some(AttributeValue::String { value, .. }) => value,
         Some(AttributeValue::StaticStr { value, .. }) => value.to_owned(),
@@ -186,14 +178,14 @@ pub(super) async fn date_input(
         _ => description.to_owned(),
     };
     let reference = ElementRef::<InputElement>::new(id.clone());
-    let draft = expr!(if selection.is_range {
+    let draft = expr!(if is_range {
         if end {
-            selection.range.get().end
+            range.get().end
         } else {
-            selection.range.get().start
+            range.get().start
         }
     } else {
-        selection.single.get()
+        single.get()
     });
     let synchronize = effect(expr!(|scope: EffectContext| {
         // Reading the live draft also schedules default restoration after every binding.
@@ -235,18 +227,18 @@ pub(super) async fn date_input(
                                 .unwrap()
                                 .set_custom_validity("Checking date...");
                         }
-                        validation.revision.increment();
-                        if selection.is_range {
-                            let previous = selection.range.get();
+                        revision.increment();
+                        if is_range {
+                            let previous = range.get();
                             if end {
-                                selection.range.set(
+                                range.set(
                                     DateRangeValue {
                                         start: previous.start,
                                         end: event.target.value,
                                     },
                                 );
                             } else {
-                                selection.range.set(
+                                range.set(
                                     DateRangeValue {
                                         start: event.target.value,
                                         end: previous.end,
@@ -254,7 +246,7 @@ pub(super) async fn date_input(
                                 );
                             }
                         } else {
-                            selection.single.set(event.target.value);
+                            single.set(event.target.value);
                         }
                     })
                 }
@@ -272,43 +264,80 @@ pub(super) fn reset_effect(
     defaults: &DateRangeValue,
     cursor: i32,
 ) -> Effect {
-    let state = state.clone();
-    let validation = validation.clone();
+    let single = state.selection.single.clone();
+    let range = state.selection.range.clone();
+    let is_range = state.selection.is_range;
+    let revision = validation.revision.clone();
+    let request = state.request.clone();
+    let queue = state.commands.clone();
+    let live_cursor = state.cursor.clone();
+    let wants_focus = state.wants_focus.clone();
+    let notice = state.notice.clone();
+    let close = state.close.clone();
     let defaults = defaults.clone();
+    let draft = if is_range {
+        expr!(range.get())
+    } else {
+        expr!(DateRangeValue {
+            start: single.get(),
+            end: "".to_owned()
+        })
+    };
     effect(expr!(|_scope: EffectContext| {
-        let _reset = || {
-            if state.selection.is_range {
-                state.selection.range.set(defaults);
-            } else {
-                state.selection.single.set(defaults.start);
+        let _prepare = || {
+            let snapshot = draft.clone();
+            let edit = revision.get();
+            let intent = request.get();
+            || {
+                let value = draft.clone();
+                let current = if value.start == snapshot.start {
+                    if value.end == snapshot.end {
+                        if revision.get() == edit {
+                            request.get() == intent
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if current {
+                    if is_range {
+                        range.set(defaults);
+                    } else {
+                        single.set(defaults.start);
+                    }
+                    revision.increment();
+                    queue.set("".to_owned());
+                    live_cursor.set(cursor);
+                    request.increment();
+                    wants_focus.set(false);
+                    notice.set("".to_owned());
+                    close.set(true);
+                }
             }
-            validation.revision.increment();
-            state.commands.set("".to_owned());
-            state.cursor.set(cursor);
-            state.request.increment();
-            state.wants_focus.set(false);
-            state.notice.set("".to_owned());
-            state.close.set(true);
         };
-        raw!("(() => {
+        raw!(
+            "(() => {
             const root = ${_scope}.element;
             const inputs = [...root.querySelectorAll('[data-date-input]')];
             const form = inputs[0]?.form;
             if (!form) return;
             let timer;
-            let edits = 0;
-            root.addEventListener('input', () => edits++, { signal: ${_scope}.abortSignal });
             form.addEventListener('reset', event => {
                 clearTimeout(timer);
-                const revision = edits;
+                const apply = ${_prepare}();
                 timer = setTimeout(() => {
-                    if (!event.defaultPrevented && !${_scope}.abortSignal.aborted && revision === edits
+                    if (!event.defaultPrevented && !${_scope}.abortSignal.aborted
                         && inputs.every(input => input.isConnected && input.form === form)) {
-                        ${_reset}();
+                        apply();
                     }
                 }, 0);
             }, { signal: ${_scope}.abortSignal });
             ${_scope}.on_cleanup(() => clearTimeout(timer));
-        })()");
+        })()"
+        );
     }))
 }

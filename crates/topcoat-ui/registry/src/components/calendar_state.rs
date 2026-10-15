@@ -2,7 +2,7 @@
 
 use topcoat::{
     context::Cx,
-    runtime::{Signal, record, signal},
+    runtime::{Expr, Signal, expr, record, signal},
 };
 
 use super::calendar_date::{
@@ -51,6 +51,26 @@ impl Selection {
                 range,
                 is_range: true,
             },
+        }
+    }
+
+    /// One acceptance predicate for rendered and validated selection snapshots.
+    pub fn matches(&self, start: &Expr<String>, end: &Expr<String>) -> Expr<bool> {
+        let start = start.clone();
+        let end = end.clone();
+        let single = self.single.clone();
+        let range = self.range.clone();
+        if self.is_range {
+            expr!({
+                let value = range.get();
+                if value.start == start {
+                    value.end == end
+                } else {
+                    false
+                }
+            })
+        } else {
+            expr!(single.get() == start)
         }
     }
 
@@ -136,8 +156,11 @@ impl CalendarRules {
         Ok(rules)
     }
 
-    pub fn opening(&self, value: &DateRangeValue) -> Result<CalendarDate, CalendarDateError> {
-        let constraints = self.constraints()?;
+    pub fn opening(
+        &self,
+        value: &DateRangeValue,
+        constraints: &DateConstraints,
+    ) -> Result<CalendarDate, CalendarDateError> {
         let today = CalendarDate::from_ordinal(self.today)?;
         Ok(value
             .start
@@ -153,9 +176,10 @@ impl CalendarRules {
         value: &DateRangeValue,
         month: Option<CalendarDate>,
     ) -> Result<CalendarDate, CalendarDateError> {
-        let opening = self.opening(value)?;
+        let constraints = self.constraints()?;
+        let opening = self.opening(value, &constraints)?;
         if let Some(month) = month {
-            Ok(self.constraints()?.clamp(CalendarDate::new(
+            Ok(constraints.clamp(CalendarDate::new(
                 month.year(),
                 month.month(),
                 opening.day().min(month.last().day()),
@@ -294,7 +318,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            rules.opening(&DateRangeValue::default()).unwrap(),
+            rules.initial(&DateRangeValue::default(), None).unwrap(),
             date("2024-02-13")
         );
         let selected = DateRangeValue {

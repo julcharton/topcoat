@@ -91,11 +91,11 @@ Use normal submit buttons or `requestSubmit()` for checked submission. `new Form
 
 # Interaction
 
-Arrow keys move one day or week. Home and End use the configured week start. Page Up and Page Down move one month; Shift moves one year. Month/year moves clamp to the last day. Navigation changes focus without selecting. Unavailable dates remain reachable for announcement, but Enter, Space, and pointer activation reject them.
+Arrow keys move one day or week. Home and End use the configured week start. Page Up and Page Down move one month; Shift moves one year. Month/year moves clamp to the last day. Navigation changes focus without selecting. A move made while selection or navigation is pending joins the ordered command queue, so an older response cannot undo it. Unavailable dates remain reachable for announcement, but Enter, Space, and pointer activation reject them.
 
 A range's first date starts a draft. An earlier second date starts over. A later or equal second date completes an allowed inclusive range. A disabled interior rejects completion while preserving the start. Clear empties both fields. Dismissal preserves incomplete drafts.
 
-The popup is a named non-modal dialog region. It does not trap focus. Escape and completed selection return focus to its trigger. Native outside dismissal and Tab follow browser focus rules. Pending server responses cannot take focus after closing, disabling, moving outside, removal, or navigation. Month buttons retain focus so repeated activation works. The initial language is English; week start is configurable.
+The popup is a named non-modal dialog region. It does not trap focus. Escape and completed selection return focus to its trigger. Native outside dismissal and Tab follow browser focus rules. Pending server responses cannot take focus after closing, disabling, moving outside, returning to the text input, removal, or navigation. Month buttons retain focus so repeated activation works. The initial language is English; week start is configurable.
 
 # Run the native checks
 
