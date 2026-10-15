@@ -1,4 +1,5 @@
 import { morph } from "../../../../topcoat-core/browser/morph";
+import { elementMorph } from "../dom/element-lifecycle";
 import { parseChildren } from "../dom/fragment";
 import type { Effect } from "../reactivity";
 import type { Runtime } from "../runtime";
@@ -280,24 +281,23 @@ export abstract class RenderUnit implements ConnectionTarget {
 		if (parent === null) return;
 		const nodes = parseChildren(parent, html);
 
-		const orphans = region.scope.release();
-		region.scope = new Scope(
-			region.scope.parent,
-			this.runtime,
-			region.scope.unit,
-		);
-		morph(parent, region.start, region.end, nodes);
-		this.runtime.hydrate(
-			parent,
-			region.start,
-			region.end,
-			region.scope,
-			orphans,
-		);
-		for (const id of orphans) this.runtime.registry.delete(id);
+		const previous = region.scope;
+		const scope = new Scope(previous.parent, this.runtime, previous.unit);
+		region.scope = scope;
+		scope.adoptElements(previous);
+		const orphans = previous.release();
+		try {
+			morph(parent, region.start, region.end, nodes, elementMorph(scope));
+			this.runtime.hydrate(parent, region.start, region.end, scope, orphans);
+		} catch (error) {
+			scope.dispose();
+			throw error;
+		} finally {
+			for (const id of orphans) this.runtime.registry.delete(id);
+		}
 
 		// Update the owning unit's subscriptions, including for nested shards.
-		region.scope.unit?.resubscribe();
+		if (!scope.isDisposed) scope.unit?.resubscribe();
 	}
 
 	/**
@@ -311,11 +311,19 @@ export abstract class RenderUnit implements ConnectionTarget {
 		if (this.isDisposed) return;
 		this.requestController.cancel();
 
-		const orphans = this.contentScope.release();
-		this.contentScope = new Scope(this.lifetime, this.runtime, this, render);
-		insert(this.contentScope, orphans);
-		for (const id of orphans) this.runtime.registry.delete(id);
-
-		this.startWatching();
+		const previous = this.contentScope;
+		const scope = new Scope(this.lifetime, this.runtime, this, render);
+		this.contentScope = scope;
+		scope.adoptElements(previous);
+		const orphans = previous.release();
+		try {
+			if (!scope.isDisposed) insert(scope, orphans);
+			if (!scope.isDisposed) this.startWatching();
+		} catch (error) {
+			scope.dispose();
+			throw error;
+		} finally {
+			for (const id of orphans) this.runtime.registry.delete(id);
+		}
 	}
 }

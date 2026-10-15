@@ -3,6 +3,7 @@ import {
 	type DevRuntimeDetail,
 } from "../../../../topcoat-core/browser/dev";
 import { morph } from "../../../../topcoat-core/browser/morph";
+import { elementMorph } from "../dom/element-lifecycle";
 import { untrack } from "../reactivity";
 import type { Runtime } from "../runtime";
 import type { Scope } from "../scope";
@@ -70,13 +71,13 @@ export class PageUnit extends RenderUnit {
 		this.replace((scope, adoptable) => {
 			const root = document.documentElement;
 			const fresh = next.documentElement;
-			for (const attr of Array.from(root.attributes)) {
-				if (!fresh.hasAttribute(attr.name)) root.removeAttribute(attr.name);
-			}
-			for (const attr of Array.from(fresh.attributes)) {
-				root.setAttribute(attr.name, attr.value);
-			}
-			morph(root, null, null, fresh.childNodes);
+			morph(
+				document,
+				root.previousSibling,
+				root.nextSibling,
+				[fresh],
+				elementMorph(scope, false),
+			);
 			this.runtime.hydrate(document, null, null, scope, adoptable);
 		}, render);
 	}
@@ -99,7 +100,7 @@ export class PageUnit extends RenderUnit {
 					replace: (update) => {
 						this.runtime.connection.stop(this);
 						this.replace((scope, adoptable) => {
-							update();
+							update(elementMorph(scope));
 							this.runtime.hydrate(document, null, null, scope, adoptable);
 						}, render);
 					},
@@ -120,7 +121,7 @@ export class PageUnit extends RenderUnit {
 		scope: Scope,
 		adoptable: Set<SignalId>,
 	): void {
-		morph(document.body, null, null, nodes);
+		morph(document.body, null, null, nodes, elementMorph(scope));
 		// The whole document, so declarations outside the body are adopted
 		// again.
 		this.runtime.hydrate(document, null, null, scope, adoptable);

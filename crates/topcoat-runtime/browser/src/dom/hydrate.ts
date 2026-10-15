@@ -4,6 +4,7 @@ import { type Region, Scope } from "../scope";
 import type { SignalId } from "../signal-registry";
 import { setupBinding } from "./binding";
 import { setupAfterRender, setupEffect } from "./effect";
+import { setupElementLifecycle } from "./element-lifecycle";
 import { setupEventHandler } from "./event";
 import { type CommentMarker, parseComment } from "./markers";
 import { setupTextExpression } from "./text";
@@ -49,6 +50,7 @@ export function hydrate(
 	adoptable: Set<SignalId> = new Set(),
 	syncText = false,
 ): void {
+	if (initialScope.isDisposed) return;
 	const walker = document.createTreeWalker(
 		root,
 		NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_ELEMENT,
@@ -63,6 +65,7 @@ export function hydrate(
 
 		const current = stack[stack.length - 1]?.scope;
 		if (current === undefined) throw new Error("Stack was empty");
+		if (initialScope.isDisposed || current.isDisposed) return;
 
 		if (node.nodeType === Node.ELEMENT_NODE) {
 			processElement(node as Element, current);
@@ -85,6 +88,11 @@ export function hydrate(
 }
 
 function processElement(el: Element, scope: Scope): void {
+	try {
+		setupElementLifecycle(el, scope);
+	} catch (error) {
+		scope.runtime.reportError(error);
+	}
 	for (const attr of Array.from(el.attributes)) {
 		setupBinding(el, attr, scope);
 		setupEventHandler(el, attr, scope);

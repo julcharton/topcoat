@@ -77,7 +77,10 @@ impl IntoIterator for Effect {
     }
 }
 
-/// Owns resources for one invocation of an [`effect`] or [`crate::after_render`].
+/// Owns resources for one browser callback invocation.
+///
+/// Used by [`effect`], [`crate::after_render`], and the configuration and
+/// reconciliation callbacks of [`crate::element_lifecycle`].
 ///
 /// This browser-only facade is passed to compiled Rust callbacks. Raw
 /// JavaScript can also use its `element` and `abortSignal` properties. Pass

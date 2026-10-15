@@ -1,3 +1,4 @@
+import type { ElementLifecycle } from "./dom/element-lifecycle";
 import { dehydrate } from "./expression/dehydrate";
 import type { DehydratedSurrogate } from "./expression/serialized";
 import { afterEffects, Effect, untrack } from "./reactivity";
@@ -37,6 +38,8 @@ export class Scope {
 	requiresConnection = false;
 	/** Regions directly owned by this scope, indexed by region id. */
 	readonly regions = new Map<string, Region>();
+	/** Native lifetimes owned here, including candidates during replacement. */
+	readonly elements = new Map<Element, ElementLifecycle>();
 	private readonly effects = new Set<Effect>();
 	private readonly pendingDom = new Map<() => void, "scope" | "render">();
 	private readonly cleanups: (() => void)[] = [];
@@ -180,10 +183,40 @@ export class Scope {
 	 * the signals it declares again, and the caller deletes the rest.
 	 */
 	release(into: Set<SignalId> = new Set()): Set<SignalId> {
-		if (this.disposed) return into;
+		const elements = this.collectElements();
+		this.releaseResources(into);
+		for (const element of elements) element.dispose();
+		return into;
+	}
+
+	/** Collects native resources deepest first, including nested content. */
+	collectElements(): ElementLifecycle[] {
+		const elements = [...this.elements.values()];
+		for (const child of this.children)
+			elements.push(...child.collectElements());
+		const depth = (element: Element) => {
+			let result = 0;
+			for (
+				let parent = element.parentElement;
+				parent;
+				parent = parent.parentElement
+			)
+				result++;
+			return result;
+		};
+		return elements.sort((a, b) => depth(b.element) - depth(a.element));
+	}
+
+	/** Moves native lifetimes into a replacement scope before releasing content. */
+	adoptElements(from: Scope): void {
+		for (const element of from.collectElements()) element.adopt(this);
+	}
+
+	private releaseResources(into: Set<SignalId>): void {
+		if (this.disposed) return;
 		this.disposed = true;
 
-		for (const child of this.children) child.release(into);
+		for (const child of this.children) child.releaseResources(into);
 		this.children.clear();
 		this.regions.clear();
 
@@ -199,7 +232,6 @@ export class Scope {
 		this.signalIds.clear();
 
 		this.parent?.children.delete(this);
-		return into;
 	}
 
 	dispose(): void {

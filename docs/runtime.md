@@ -430,6 +430,63 @@ let measure = effect(expr!(|scope: EffectContext| {
 
 Raw integrations must cancel their queued work or check `abortSignal.aborted` before applying results. The context owns only registered resources. It does not cancel arbitrary promises or browser callbacks automatically.
 
+# Native element lifetimes
+
+Use [`element_lifecycle`] when a native element's session must survive replacement that reuses its DOM node. Configuration installs current listeners and returns the final native teardown callback. A separate reconciliation callback tracks signals and updates native state. Ordinary [`effect`] cleanup still runs on every invocation and content replacement.
+
+This manual popover follows a signal and releases its native state when its element lifetime ends:
+
+```rust
+use topcoat::{
+    Result, context::Cx,
+    runtime::{EffectContext, ElementRef, HtmlElement, element_lifecycle, expr, signal},
+    view::{View, component, element_id, view},
+};
+
+#[component]
+async fn popup(cx: &Cx) -> Result<impl View> {
+    let reference = ElementRef::<HtmlElement>::new(element_id(cx));
+    let visible = signal(cx, || false);
+    let lifecycle = element_lifecycle(
+        expr!(|_scope: EffectContext| {
+            let owned = reference.resolve().unwrap();
+            || {
+                let result = owned.hide_popover();
+                if result.is_err() {
+                    let error = result.unwrap_err();
+                    let checked = if error.is_disconnected() { Ok(()) } else { Err(error) };
+                    checked.unwrap();
+                }
+            }
+        }),
+        expr!(|_scope: EffectContext| {
+            let element = reference.resolve().unwrap();
+            if visible.get() {
+                element.show_popover().unwrap();
+            } else {
+                element.hide_popover().unwrap();
+            }
+        }),
+    );
+    Ok(view! {
+        <button @click=$(|_event| visible.toggle())>"Toggle"</button>
+        <div id=(reference.id()) popover="manual" (lifecycle)>"Content"</div>
+    })
+}
+```
+
+Attach one lifecycle per element. Both callbacks are synchronous and browser-only. Configuration runs without tracking signal reads, after hydration and server watchers are installed. Its `EffectContext` owns listeners, deferred work, and `on_cleanup` callbacks until that configuration is replaced or disposed. Reconciliation runs after configuration, tracks synchronous signal reads, and has the same invocation cleanup behavior as `effect`. Signal reruns leave configuration listeners and final native cleanup alone. Reconciliation must be idempotent, including for repeated equal-value signal writes.
+
+On compatible reuse, configuration and reconciliation receive fresh captures. The new returned finalizer replaces the previous finalizer without calling it. It is a new teardown declaration for the same native element, not cleanup for an allocation made during configuration. Put configuration resources in `scope.on_cleanup`. Acquire native state in reconciliation after the finalizer is installed. Capture the resolved physical element for finalization instead of looking it up by ID later. A changed controlling signal governs subsequent reconciliation; old listeners, subscriptions, and pending invocation work are canceled.
+
+Call `.live_attribute("open")` when native operations own an attribute that server morphing must leave alone. Both the current presence and absence are preserved on reuse. Initial server markup supplies defaults; other attributes and children update normally. Names must be lowercase ASCII HTML attribute names. `id`, runtime metadata, and competing reactive bindings are rejected. A live attribute claim does not perform a native action or make a dialog modal.
+
+The lifetime survives only compatible reuse of the same physical node with unchanged ID, native type, and claimed attribute set. Removing the declaration, changing those properties, committing navigation, or disposing the owner ends it. A replacement gets a fresh physical node even if its ID is the same. A move can retain the session only when the browser preserves the connection; a fallback detach/reinsert replaces the affected native elements, including those inside a moved ancestor. Native resources finalize deepest first, before removal while connected. Owned listeners and pending work are canceled first, and one cleanup error does not prevent the remaining finalizers. Direct removal by external JavaScript still requires eventual owner disposal, and teardown must handle a disconnected snapshot.
+
+Pending or failed requests leave displayed native lifetimes active. Failed configuration releases its partial invocation and prevents reconciliation; a reused element retains its last successful finalizer until recovery or disposal. A reconciliation failure releases that invocation, and final cleanup remains owned. Staged replacement resources remain owned even if morphing or hydration fails.
+
+Native notifications may arrive after the operation that caused them. Reuse does not emit teardown events. Queued genuine events on retained nodes reach current handlers. For native dialogs, record closing `beforetoggle` intent synchronously so a subsequent morph cannot reopen a genuinely dismissed session before queued `toggle` or `close` events arrive. Opening `beforetoggle` can be canceled and is not proof of completed opening. Reconcile coalesced notifications against current native state. Keep this control policy in the consumer; the lifecycle does not interpret native events or restore focus itself.
+
 # DOM scheduling
 
 Use `scope.after_dom(callback)` inside an effect or an owned listener when work needs the current local bindings to settle. The callback runs once without tracking its signal reads. Read the signals that should trigger the effect before queuing the callback. Each call queues separate work, including when no binding needs updating.
