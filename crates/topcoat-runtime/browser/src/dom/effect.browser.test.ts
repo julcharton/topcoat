@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { flushEffects, signal } from "../reactivity";
 import { newRender } from "../render/frames";
 import { Runtime } from "../runtime";
-import { EventTarget, F64 } from "../surrogate";
+import { type Event, EventTarget, F64 } from "../surrogate";
 import { Str } from "../surrogate/string";
 import type { EffectContext } from "./effect";
 
@@ -25,6 +25,71 @@ afterEach(() => {
 	flushEffects();
 	vi.unstubAllGlobals();
 	document.body.innerHTML = "";
+});
+
+it.each([
+	["attribute", "focus"],
+	["attribute", "click"],
+	["owned", "focus"],
+	["owned", "click"],
+])("keeps %s %s handler reads out of the dispatching effect", (attachment, name) => {
+	let runs = 0;
+	let cleanups = 0;
+	const events: string[] = [];
+	const handler = (event: Event) => {
+		runtime.context.signal("handler").get();
+		events.push(`${event.event_type}:${event.current_target.id}`);
+	};
+	vi.stubGlobal("onEvent", handler);
+	mount(
+		`<!--::topcoat::signal({"t":"signal","id":"handler","v":0})-->
+		<!--::topcoat::signal({"t":"signal","id":"setup","v":0})-->
+		<input id="attached" data-topcoat-effect="hook"
+			${attachment === "attribute" ? `data-topcoat-on:${name}="onEvent"` : ""}>
+		<input id="other">`,
+		(context) => {
+			runs++;
+			context.on_cleanup(() => cleanups++);
+			if (attachment === "owned") {
+				context.listen(context.target(), new Str(name), handler);
+			}
+			const input = context.element as HTMLInputElement;
+			input.focus();
+			if (name === "click") input.click();
+			// Tracking must resume after the synchronous event returns.
+			runtime.context.signal("setup").get();
+		},
+	);
+	expect(events).toEqual([`${name}:attached`]);
+	document.querySelector<HTMLInputElement>("#other")?.focus();
+	expect(document.activeElement?.id).toBe("other");
+	runtime.context.signal("handler").set(new F64(1));
+	flushEffects();
+	expect({
+		runs,
+		cleanups,
+		focused: document.activeElement?.id,
+		events,
+	}).toEqual({
+		runs: 1,
+		cleanups: 0,
+		focused: "other",
+		events: [`${name}:attached`],
+	});
+
+	runtime.context.signal("setup").set(new F64(1));
+	flushEffects();
+	expect({
+		runs,
+		cleanups,
+		focused: document.activeElement?.id,
+		events,
+	}).toEqual({
+		runs: 2,
+		cleanups: 1,
+		focused: "attached",
+		events: [`${name}:attached`, `${name}:attached`],
+	});
 });
 
 it("owns external form reset listeners across reruns, reused elements and live removal", () => {

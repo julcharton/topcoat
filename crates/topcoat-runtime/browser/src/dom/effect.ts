@@ -1,8 +1,8 @@
 import { compile } from "../expression/compile";
-import { untrack } from "../reactivity";
 import { Scope } from "../scope";
-import { Bool, Event, EventTarget } from "../surrogate";
+import { Bool, EventTarget } from "../surrogate";
 import type { Str } from "../surrogate/string";
+import { type EventHandler, invokeEventHandler } from "./event";
 
 /** The browser counterpart of Rust's EffectContext, owned by one invocation. */
 export class EffectContext {
@@ -23,14 +23,10 @@ export class EffectContext {
 		return new EventTarget(this.element);
 	}
 
-	listen(
-		target: EventTarget,
-		event: Str,
-		callback: (event: Event) => void,
-	): void {
+	listen(target: EventTarget, event: Str, callback: EventHandler): void {
 		target.inner?.addEventListener(
 			event.toString(),
-			(event) => untrack(() => callback(new Event(event))),
+			(event) => invokeEventHandler(callback, event),
 			{ signal: this.abortSignal },
 		);
 	}
