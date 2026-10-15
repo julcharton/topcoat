@@ -18,6 +18,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	runtime.navigation.dispose();
 	runtime.page.dispose();
 	document.body.replaceChildren();
 	vi.restoreAllMocks();

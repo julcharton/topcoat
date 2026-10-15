@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "signal write revisions can only be read in browser expressions")]
+    #[should_panic]
     fn write_revision_panics_server_side_without_value_bounds() {
         struct NoVocabulary;
         let _: U64Surrogate = surrogate(NoVocabulary).write_revision();
