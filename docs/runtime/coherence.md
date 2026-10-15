@@ -93,3 +93,19 @@ Each V8 evaluation gets fresh global and runtime contexts and a microtask queue,
 Rust evaluation runs in the test process. Async cases have a five-second cooperative timeout, which can stop a pending future but cannot interrupt a poll that never returns. Synchronous cases have no deadline. Test expressions must terminate; process isolation is needed before adding potentially unbounded Rust programs.
 
 Both sides use runtime surrogate types. Agreement checks consistency between the server and browser, but does not independently verify every operation against ordinary Rust.
+
+The lowercase suite also compares expression results to ordinary `str::to_lowercase`. It covers every Unicode scalar in isolation and in contexts that exercise the `Cased` and `Case_Ignorable` properties on both sides of Greek sigma.
+
+# Updating lowercase tables
+
+Lowercasing uses Unicode 17.0.0 and 18.0.0 tables generated from `UnicodeData.txt`, `SpecialCasing.txt`, and `DerivedCoreProperties.txt`. The generator pins and verifies the source checksums. It needs Python 3 and network access only when regenerating tables. From `crates/topcoat-runtime/browser`, run:
+
+```sh
+python3 scripts/generate-lowercase.py
+yarn biome check --write src/surrogate/string/lowercase-data.ts
+yarn build
+```
+
+The expression compiler captures `core::char::UNICODE_VERSION` on the Rust target through the same mechanism as captured values. It does not read the proc-macro host's version. The Rust method stays zero-argument; only its generated JavaScript receives the version. Unsupported versions fail during expression compilation, and the browser rejects unknown version arguments.
+
+When Rust updates `char::UNICODE_VERSION`, add the new version and checksums to the generator, the version match in `grammar/src/expr/expr_method_call.rs` in the runtime crate, and the documented versions together. Inspect changes to the locale-independent rules in `SpecialCasing.txt`. The generator rejects unsupported contextual rules. Run the full coherence suite with a Rust toolchain for each supported Unicode version against the same regenerated bundle before committing it. Browser casing functions and Unicode property escapes are not substitutes for the pinned tables.

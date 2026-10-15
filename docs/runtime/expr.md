@@ -58,7 +58,7 @@ Runtime types expose a subset of their Rust APIs:
 - `f64`: arithmetic (`+`, `-`, `*`, `/`), comparisons, and negation. Floating-point literals are `f64`. Text output follows Rust's `Display`, including decimal notation and the spellings `inf`, `-inf`, and `-0`.
 - Rust integer types: arithmetic (`+`, `-`, `*`, `/`, `%`), comparisons, and negation for signed types. Unsuffixed integer literals are `usize`; use a suffix for another type, such as `42u64` or `-1i32`. Operands must have the same type. Values retain their full precision in the browser, including 128-bit integers, and pointer-sized integers use the server target's width. Arithmetic panics on overflow, division by zero, or remainder by zero in both debug and release builds. Signed `MIN / -1`, `MIN % -1`, and negating `MIN` also panic.
 - `bool`: `!`, equality comparisons, `then`, and `then_some`.
-- `String` and `&str`: `len`, `is_empty`, `trim`, `trim_start`, `trim_end`, `starts_with`, `ends_with`, `contains`, `to_owned`, and comparisons. The result of `len` has type `usize`.
+- `String` and `&str`: `len`, `is_empty`, `trim`, `trim_start`, `trim_end`, `starts_with`, `ends_with`, `contains`, `to_owned`, `to_lowercase`, and comparisons. The result of `len` has type `usize`. `to_lowercase` returns an owned `String`.
 - `Option<T>`: `is_some`, `is_none`, `unwrap`, and `expect`.
 - `Result<T, E>`: `is_ok`, `is_err`, `ok`, `err`, `unwrap`, `expect`, `unwrap_err`, and `expect_err`.
 - `Vec<T>`, `[T; N]`, and slices: `len`, `is_empty`, `get`, `index`, `first`, `last`, `to_vec`, and `to_owned`. Vectors and arrays also support `as_slice` and `clone`. Lengths and indexes are `usize`. `get` returns `None` for an out-of-bounds index; `index` panics. Both borrow the element. Elements must belong to the shared vocabulary.
@@ -68,6 +68,28 @@ Runtime types expose a subset of their Rust APIs:
 - [`ElementRef`](struct.ElementRef.html): `id`, `clone`, and browser-only `resolve`. Capture a reference built from `view::element_id(cx)` and resolve it inside a handler closure. Each call finds the current element or returns a missing/wrong-type error. Resolved handles cannot be serialized. See [element references](index.html#element-references).
 
 Operations follow Rust semantics in both languages. For strings, `len` counts UTF-8 bytes, comparisons use code point order, and trimming uses Unicode `White_Space`. This means trimming keeps U+FEFF and removes U+0085.
+
+`to_lowercase` follows ordinary Rust's locale-independent Unicode casing. It handles contextual Greek sigma, supplementary characters, and mappings that expand, such as U+0130 becoming `i` followed by U+0307. Rust Unicode versions 17.0.0 and 18.0.0 are supported. Each expression carries the target Rust toolchain's Unicode version to the browser, which selects matching bundled tables. The browser's own Unicode version and locale do not affect the result. Compiling an expression with another Unicode version fails until matching tables and parity checks are added.
+
+Use lowercase strings for local filtering:
+
+```rust
+# use topcoat::{Result, context::Cx, runtime::{Event, signal}, view::*};
+# #[component]
+# async fn example(cx: &Cx) -> Result<impl View> {
+let query = signal(cx, String::new);
+let label = "Hello World";
+
+Ok(view! {
+    <input :value=$(query.get()) @input=$(|e: Event| query.set(e.target.value))>
+    <p :hidden=$(!label.to_lowercase().contains(query.get().to_lowercase().trim()))>
+        (label)
+    </p>
+})
+# }
+```
+
+Lowercasing does not perform Unicode normalization or full case folding. For example, a lowercase sharp S does not become `ss`.
 
 # Supported syntax
 
