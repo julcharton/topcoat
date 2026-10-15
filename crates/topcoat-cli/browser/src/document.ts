@@ -1,4 +1,4 @@
-import { morph } from "../../../topcoat-core/browser/morph";
+import { type MorphOptions, morph } from "../../../topcoat-core/browser/morph";
 
 /** Script, base URL and doctype changes need a fresh document. */
 export function canMorph(next: Document): boolean {
@@ -17,17 +17,17 @@ export function canMorph(next: Document): boolean {
 }
 
 /** Updates the full document, retaining matching elements and form state. */
-export function morphDocument(next: Document): void {
+export function morphDocument(
+	next: Document,
+	options: MorphOptions = {},
+): void {
 	const root = document.documentElement;
 	const fresh = next.documentElement;
 	const { scrollX, scrollY } = window;
-	for (const attr of Array.from(root.attributes)) {
-		if (!fresh.hasAttribute(attr.name)) root.removeAttribute(attr.name);
-	}
-	for (const attr of Array.from(fresh.attributes)) {
-		root.setAttribute(attr.name, attr.value);
-	}
-	morph(root, null, null, fresh.childNodes, { preserveFormState: true });
+	morph(document, root.previousSibling, root.nextSibling, [fresh], {
+		preserveFormState: true,
+		...options,
+	});
 	window.scrollTo({ left: scrollX, top: scrollY, behavior: "instant" });
 }
 

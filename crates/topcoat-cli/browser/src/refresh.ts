@@ -6,6 +6,7 @@ import {
 	FRAMES_MEDIA_TYPE,
 	readFrames,
 } from "../../../topcoat-core/browser/frames";
+import type { MorphOptions } from "../../../topcoat-core/browser/morph";
 import { canMorph, morphDocument, morphRegion } from "./document";
 
 /** Refreshes the page after a build, accepting only the latest response. */
@@ -88,7 +89,8 @@ export class PageRefresh {
 							return;
 						}
 						this.beforeUpdate();
-						const update = () => morphDocument(next);
+						const update = (options: MorphOptions = {}) =>
+							morphDocument(next, options);
 						if (detail.runtime) detail.runtime.replace(update);
 						else update();
 						committed = true;

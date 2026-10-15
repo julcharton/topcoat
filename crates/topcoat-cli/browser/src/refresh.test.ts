@@ -2,6 +2,10 @@
 // @vitest-environment-options {"settings":{"disableCSSFileLoading":true,"handleDisabledFileLoadingAsSuccess":true}}
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
+	DEV_RUNTIME_EVENT,
+	type DevRuntimeDetail,
+} from "../../../topcoat-core/browser/dev";
+import {
 	FRAMES_MEDIA_TYPE,
 	type ServerMessage,
 } from "../../../topcoat-core/browser/frames";
@@ -27,6 +31,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 	vi.clearAllMocks();
+	document.documentElement.removeAttribute("data-live");
 });
 
 function response(body: string, head = ""): Response {
@@ -94,6 +99,54 @@ it("morphs a page without the runtime, preserving controls and updating its head
 	expect(document.querySelector("link")?.getAttribute("href")).toBe("/new.css");
 	expect(document.documentElement.lang).toBe("en");
 	expect(document.querySelector("p")?.textContent).toBe("new");
+});
+
+it("forwards runtime ownership policy through the full-document refresh", async () => {
+	document.documentElement.setAttribute("data-live", "browser");
+	document.body.innerHTML =
+		'<dialog id="retained" open></dialog><dialog id="retired"></dialog>';
+	const retained = document.getElementById("retained");
+	const retired = document.getElementById("retired");
+	const removed: Node[] = [];
+	const controller = new AbortController();
+	window.addEventListener(
+		DEV_RUNTIME_EVENT,
+		(event) => {
+			const { detail } = event as CustomEvent<DevRuntimeDetail>;
+			detail.runtime = {
+				request: async () =>
+					response(
+						'<dialog id="retained" title="new"></dialog><dialog id="retired"></dialog>',
+					),
+				replace: (update) =>
+					update({
+						canReuseElement: (current) => current !== retired,
+						preserveAttributes: (current) =>
+							new Set(current === retained ? ["open"] : ["data-live"]),
+						beforeRemove: (node) => {
+							expect(node.isConnected).toBe(true);
+							removed.push(node);
+						},
+					}),
+				swap: vi.fn(),
+			};
+		},
+		{ signal: controller.signal },
+	);
+	try {
+		const { refresh, reportError } = fixture();
+		await refresh.refresh();
+		expect(reportError).not.toHaveBeenCalled();
+		expect(reload).not.toHaveBeenCalled();
+		expect(document.getElementById("retained")).toBe(retained);
+		expect(document.documentElement.getAttribute("data-live")).toBe("browser");
+		expect(retained?.hasAttribute("open")).toBe(true);
+		expect(retained?.getAttribute("title")).toBe("new");
+		expect(document.getElementById("retired")).not.toBe(retired);
+		expect(removed).toEqual([retired]);
+	} finally {
+		controller.abort();
+	}
 });
 
 function streamed() {

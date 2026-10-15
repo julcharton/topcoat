@@ -234,18 +234,20 @@ it("removal and recreation create a fresh lifetime isolated from old aliases", a
 it("retains counters during reentrant declaration transfer through real scopes", () => {
 	const previous = handle();
 	element<HTMLButtonElement>("#same").click();
-	const orphans = runtime.page.contentScope.release();
 	const intermediate = new Scope(null, runtime);
 	const finalOwner = new Scope(null, runtime);
 	try {
-		runtime.hydrate(document.body, null, null, intermediate, orphans);
-		intermediate.effect(() => {
-			previous.write_revision();
-			const transfer = intermediate.release();
-			runtime.hydrate(document.body, null, null, finalOwner, transfer);
-			expect(transfer.size).toBe(0);
+		intermediate.replace(runtime.page.contentScope, (orphans) => {
+			runtime.hydrate(document.body, null, null, intermediate, orphans);
+			intermediate.effect(() => {
+				previous.write_revision();
+				finalOwner.replace(intermediate, (transfer) => {
+					runtime.hydrate(document.body, null, null, finalOwner, transfer);
+					expect(transfer.size).toBe(0);
+				});
+			});
+			expect(orphans.size).toBe(0);
 		});
-		expect(orphans.size).toBe(0);
 		intermediate.dispose();
 		expect(previous.write_revision()).toBe(1n);
 		expect(Object.values(finalOwner.collectSignalValues())).toEqual([false]);

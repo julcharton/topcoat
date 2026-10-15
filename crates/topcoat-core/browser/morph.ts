@@ -14,6 +14,19 @@
 export interface MorphOptions {
 	/** Keeps the live state of matching form controls, including their defaults. */
 	preserveFormState?: boolean;
+	/** Rejects reuse, including a move that would disconnect an element. */
+	canReuseElement?: (
+		current: Element,
+		incoming: Element,
+		wouldDisconnect: boolean,
+	) => boolean;
+	/** Live attributes whose presence and value belong to the browser. */
+	preserveAttributes?: (
+		current: Element,
+		incoming: Element,
+	) => ReadonlySet<string>;
+	/** Releases owned resources before a node or its subtree is removed. */
+	beforeRemove?: (node: Node) => void;
 }
 
 /** The ids present in both the old and the new content. */
@@ -51,6 +64,20 @@ export function morph(
 	const newNodes = Array.from(content);
 	const oldNodes = rangeNodes(parent, start, end);
 	const ctx = createContext(parent, oldNodes, newNodes, options);
+	// A document cannot temporarily contain two root elements. Morph its
+	// single root directly so a rejected reuse replaces it before insertion.
+	const oldRoot = oldNodes[0];
+	const newRoot = newNodes[0];
+	if (
+		parent.nodeType === Node.DOCUMENT_NODE &&
+		oldRoot instanceof Element &&
+		newRoot instanceof Element &&
+		oldNodes.length === 1 &&
+		newNodes.length === 1
+	) {
+		morphNode(ctx, oldRoot, newRoot);
+		return;
+	}
 	morphChildren(
 		ctx,
 		parent,
@@ -127,7 +154,7 @@ function createContext(
 		persistent,
 		idSets,
 		oldById,
-		active: parent.ownerDocument?.activeElement ?? null,
+		active: (parent.ownerDocument ?? (parent as Document)).activeElement,
 	};
 }
 
@@ -170,7 +197,7 @@ function morphChildren(
 		if (cursor && cursor !== end) {
 			const match = findBestMatch(ctx, newNode, cursor, end);
 			if (match) {
-				removeNodesBetween(cursor, match);
+				removeNodesBetween(ctx, cursor, match);
 				cursor = morphNode(ctx, match, newNode).nextSibling;
 				continue;
 			}
@@ -182,9 +209,15 @@ function morphChildren(
 		if (newNode instanceof Element && ctx.persistent.has(newNode.id)) {
 			const old = ctx.oldById.get(newNode.id);
 			if (old) {
-				moveBefore(parent, old, cursor);
-				cursor = morphNode(ctx, old, newNode).nextSibling;
-				continue;
+				if (
+					isSoftMatch(ctx, old, newNode) &&
+					moveBefore(ctx, parent, old, newNode, cursor)
+				) {
+					cursor = morphNode(ctx, old, newNode).nextSibling;
+					continue;
+				}
+				if (cursor === old) cursor = old.nextSibling;
+				removeNode(ctx, old);
 			}
 		}
 
@@ -193,7 +226,7 @@ function morphChildren(
 
 	while (cursor && cursor !== end) {
 		const next: ChildNode | null = cursor.nextSibling;
-		cursor.remove();
+		removeNode(ctx, cursor);
 		cursor = next;
 	}
 }
@@ -255,7 +288,13 @@ function findBestMatch(
 function isSoftMatch(ctx: Ctx, oldNode: Node, newNode: Node): boolean {
 	if (oldNode.nodeType !== newNode.nodeType) return false;
 	if (oldNode instanceof Element && newNode instanceof Element) {
-		if (oldNode.tagName !== newNode.tagName) return false;
+		if (
+			oldNode.tagName !== newNode.tagName ||
+			oldNode.namespaceURI !== newNode.namespaceURI
+		)
+			return false;
+		if (ctx.options.canReuseElement?.(oldNode, newNode, false) === false)
+			return false;
 		if (
 			oldNode.id &&
 			oldNode.id !== newNode.id &&
@@ -279,13 +318,18 @@ function isIdSetMatch(ctx: Ctx, oldNode: Node, newNode: Node): boolean {
 }
 
 /** Removes the siblings from `from` up to, not including, `to`. */
-function removeNodesBetween(from: ChildNode, to: ChildNode): void {
+function removeNodesBetween(ctx: Ctx, from: ChildNode, to: ChildNode): void {
 	let cursor: ChildNode | null = from;
 	while (cursor && cursor !== to) {
 		const next: ChildNode | null = cursor.nextSibling;
-		cursor.remove();
+		removeNode(ctx, cursor);
 		cursor = next;
 	}
+}
+
+function removeNode(ctx: Ctx, node: ChildNode): void {
+	ctx.options.beforeRemove?.(node);
+	node.remove();
 }
 
 /**
@@ -294,8 +338,12 @@ function removeNodesBetween(from: ChildNode, to: ChildNode): void {
  */
 function morphNode(ctx: Ctx, oldNode: ChildNode, newNode: Node): ChildNode {
 	if (oldNode instanceof Element && newNode instanceof Element) {
-		if (oldNode.tagName === newNode.tagName) {
-			syncAttributes(oldNode, newNode, preservedAttributes(ctx, oldNode));
+		if (isSoftMatch(ctx, oldNode, newNode)) {
+			const preserve = preservedAttributes(ctx, oldNode);
+			for (const name of ctx.options.preserveAttributes?.(oldNode, newNode) ??
+				[])
+				preserve.add(name);
+			syncAttributes(oldNode, newNode, preserve);
 			// A textarea's children are its default value. Leave them alone
 			// when preserving its value, including its caret and selection.
 			if (
@@ -322,6 +370,7 @@ function morphNode(ctx: Ctx, oldNode: ChildNode, newNode: Node): ChildNode {
 		return oldNode;
 	}
 
+	ctx.options.beforeRemove?.(oldNode);
 	oldNode.replaceWith(newNode);
 	return newNode as ChildNode;
 }
@@ -351,23 +400,33 @@ function insertNode(
  * browser supports a state-preserving move.
  */
 function moveBefore(
+	ctx: Ctx,
 	parent: ParentNode,
-	node: Node,
+	node: Element,
+	incoming: Element,
 	before: ChildNode | null,
-): void {
+): boolean {
+	if (
+		node.parentNode === parent &&
+		(node === before || node.nextSibling === before)
+	)
+		return true;
 	const mover = parent as ParentNode & {
 		moveBefore?: (node: Node, before: ChildNode | null) => void;
 	};
 	if (mover.moveBefore && node.isConnected) {
 		try {
 			mover.moveBefore(node, before);
-			return;
+			return true;
 		} catch {
 			// The node cannot be moved in place, so fall through to a plain
 			// insertion.
 		}
 	}
+	if (ctx.options.canReuseElement?.(node, incoming, true) === false)
+		return false;
 	parent.insertBefore(node, before);
+	return true;
 }
 
 /**
