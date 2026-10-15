@@ -352,13 +352,17 @@ pub(super) fn reset_effect(
             const inputs = [...${_scope}.element.querySelectorAll('[data-date-input]')];
             const form = inputs[0].form;
             let timer;
+            const attempts = [];
             ${_scope}.listen(owner.unwrap(), ${_event_name}, event => {
+                attempts.push({ event, apply: ${_prepare}() });
                 clearTimeout(timer);
-                const apply = ${_prepare}();
                 timer = setTimeout(() => {
-                    if (!event.default_prevented.dehydrate() && !${_scope}.abortSignal.aborted
+                    // A canceled successor cannot discard an earlier native reset.
+                    const reset = attempts.findLast(({ event }) => !event.default_prevented.dehydrate());
+                    attempts.length = 0;
+                    if (reset && !${_scope}.abortSignal.aborted
                         && inputs.every(input => input.isConnected && input.form === form)) {
-                        const value = apply();
+                        const value = reset.apply();
                         const values = [value.start, value.end];
                         inputs.forEach((input, index) => {
                             const next = values[index].toString();
@@ -367,7 +371,10 @@ pub(super) fn reset_effect(
                     }
                 }, 0);
             });
-            ${_scope}.on_cleanup(() => clearTimeout(timer));
+            ${_scope}.on_cleanup(() => {
+                clearTimeout(timer);
+                attempts.length = 0;
+            });
         })()"
         );
     }))

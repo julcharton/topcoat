@@ -22,8 +22,8 @@ async function singleValue(page, expected) {
 
 // Hold only the task scheduled synchronously by reset, so replacement can finish
 // before the real owned callback is released. No signals or effects are intercepted.
-async function holdReset(page) {
-	await page.locator("#ordering-form").evaluate((form) => {
+async function holdReset(page, canceledSuccessor) {
+	await page.locator("#ordering-form").evaluate((form, canceledSuccessor) => {
 		const original = window.setTimeout;
 		window.resetCompletions = [];
 		window.setTimeout = (callback, delay, ...args) => {
@@ -37,11 +37,60 @@ async function holdReset(page) {
 		};
 		try {
 			form.reset();
+			if (canceledSuccessor) {
+				form.addEventListener("reset", (event) => event.preventDefault(), {
+					once: true,
+				});
+				form.reset();
+			}
 		} finally {
 			window.setTimeout = original;
 		}
+	}, canceledSuccessor);
+	assert.equal(
+		await page.evaluate(() => window.resetCompletions.length),
+		canceledSuccessor ? 2 : 1,
+	);
+}
+
+async function editBoth(page) {
+	await page.locator(input).fill("2024-03-15");
+	await validity(page, input, true);
+	await page.locator(`${range} input[name=start]`).fill("2024-03-15");
+	await page.locator(`${range} input[name=end]`).fill("2024-03-18");
+	await validity(page, `${range} input[name=end]`, true);
+}
+
+async function bothValues(page, expected) {
+	await afterReset(page);
+	const actual = await page.locator("#dates-form").evaluate((form) => {
+		const names = ["single", "start", "end"];
+		const data = new FormData(form);
+		return {
+			signals: ["single-value", "range-start-value", "range-end-value"].map(
+				(id) => document.getElementById(id).textContent,
+			),
+			inputs: names.map((name) => form.elements.namedItem(name).value),
+			submitted: names.map((name) => data.get(name)),
+		};
 	});
-	assert.equal(await page.evaluate(() => window.resetCompletions.length), 1);
+	assert.deepEqual(
+		actual.signals,
+		expected,
+		"caller signals match the last uncanceled intent",
+	);
+	assert.deepEqual(
+		actual.inputs,
+		expected,
+		"native fields match caller signals",
+	);
+	assert.deepEqual(
+		actual.submitted,
+		expected,
+		"FormData matches caller signals",
+	);
+	await validity(page, input, true);
+	await validity(page, `${range} input[name=end]`, true);
 }
 
 export function resetRegressions(test) {
@@ -173,64 +222,112 @@ export function resetRegressions(test) {
 		assert.equal(await page.locator("#effect-runs").textContent(), "2");
 	});
 
-	for (const change of ["switch-controller", "remove-owner"]) {
-		test(`${change} discards the old reset completion`, async (page) => {
-			await page.goto(`${origin}/calendar-reset-tests`);
-			await page.waitForLoadState("networkidle");
-			await holdReset(page);
-			await page.locator(`#${change}`).click();
-			if (change === "switch-controller") {
-				await page.locator('#reset-owner[data-controller="second"]').waitFor();
-				assert.equal(
-					await page.locator("#reset-owner").getAttribute("data-controller"),
-					"second",
+	for (const canceledFirst of [false, true]) {
+		test(`${canceledFirst ? "canceled then accepted" : "accepted then canceled"} reset preserves single and range defaults`, async (page) => {
+			await editBoth(page);
+			await page.locator("#dates-form").evaluate((form, canceledFirst) => {
+				const cancelNext = () =>
+					form.addEventListener("reset", (event) => event.preventDefault(), {
+						once: true,
+					});
+				if (canceledFirst) cancelNext();
+				form.reset();
+				if (!canceledFirst) cancelNext();
+				form.reset();
+			}, canceledFirst);
+			await bothValues(page, ["2024-01-31", "", ""]);
+		});
+	}
+
+	for (const action of [
+		"app-same-date",
+		"app-roundtrip-date",
+		"app-same-range",
+		"app-roundtrip-range",
+	]) {
+		test(`a canceled successor preserves later ${action} intent`, async (page) => {
+			await editBoth(page);
+			await page.locator(`#${action}`).evaluate((button) => {
+				button.form.reset();
+				button.click();
+				button.form.addEventListener(
+					"reset",
+					(event) => event.preventDefault(),
+					{ once: true },
 				);
-			} else {
-				await page.locator("#ordering-picker").waitFor({ state: "detached" });
-				assert.equal(await page.locator("#ordering-picker").count(), 0);
-			}
-			await page.evaluate(() => {
-				for (const complete of window.resetCompletions) complete();
+				button.form.reset();
 			});
-			await afterReset(page);
-			assert.equal(
-				await page.locator("#first-value").textContent(),
-				"2024-03-15",
-			);
-			assert.equal(
-				await page.locator("#second-value").textContent(),
-				"2024-03-15",
-			);
-			if (change === "remove-owner") {
-				await page.locator("#remove-owner").click();
-				await page.locator("#ordering-picker input").waitFor();
-			}
-			assert.equal(
-				await page.locator("#ordering-picker input").inputValue(),
-				"2024-03-15",
-			);
-			await page.locator("#native-reset").click();
-			await afterReset(page);
-			assert.equal(
-				await page.locator("#ordering-picker input").inputValue(),
-				"2024-01-31",
-			);
-			const owner = change === "switch-controller" ? "second" : "first";
-			const other = owner === "second" ? "first" : "second";
-			assert.equal(
-				await page.locator(`#${owner}-value`).textContent(),
-				"2024-01-31",
-			);
-			assert.equal(
-				await page.locator(`#${other}-value`).textContent(),
-				"2024-03-15",
-			);
-			assert.equal(
-				await page
-					.locator("#ordering-form")
-					.evaluate((form) => new FormData(form).get("ordered")),
-				"2024-01-31",
+			await bothValues(
+				page,
+				action.endsWith("date")
+					? ["2024-03-15", "", ""]
+					: ["2024-01-31", "2024-03-15", "2024-03-18"],
 			);
 		});
+	}
+
+	for (const change of ["switch-controller", "remove-owner"]) {
+		for (const canceledSuccessor of [false, true]) {
+			test(`${change} discards the old reset completion${canceledSuccessor ? " after a canceled successor" : ""}`, async (page) => {
+				await page.goto(`${origin}/calendar-reset-tests`);
+				await page.waitForLoadState("networkidle");
+				await holdReset(page, canceledSuccessor);
+				await page.locator(`#${change}`).click();
+				if (change === "switch-controller") {
+					await page
+						.locator('#reset-owner[data-controller="second"]')
+						.waitFor();
+					assert.equal(
+						await page.locator("#reset-owner").getAttribute("data-controller"),
+						"second",
+					);
+				} else {
+					await page.locator("#ordering-picker").waitFor({ state: "detached" });
+					assert.equal(await page.locator("#ordering-picker").count(), 0);
+				}
+				await page.evaluate(() => {
+					for (const complete of window.resetCompletions) complete();
+				});
+				await afterReset(page);
+				assert.equal(
+					await page.locator("#first-value").textContent(),
+					"2024-03-15",
+				);
+				assert.equal(
+					await page.locator("#second-value").textContent(),
+					"2024-03-15",
+				);
+				if (change === "remove-owner") {
+					await page.locator("#remove-owner").click();
+					await page.locator("#ordering-picker input").waitFor();
+				}
+				assert.equal(
+					await page.locator("#ordering-picker input").inputValue(),
+					"2024-03-15",
+				);
+				await page.locator("#native-reset").click();
+				await afterReset(page);
+				assert.equal(
+					await page.locator("#ordering-picker input").inputValue(),
+					"2024-01-31",
+				);
+				const owner = change === "switch-controller" ? "second" : "first";
+				const other = owner === "second" ? "first" : "second";
+				assert.equal(
+					await page.locator(`#${owner}-value`).textContent(),
+					"2024-01-31",
+				);
+				assert.equal(
+					await page.locator(`#${other}-value`).textContent(),
+					"2024-03-15",
+				);
+				assert.equal(
+					await page
+						.locator("#ordering-form")
+						.evaluate((form) => new FormData(form).get("ordered")),
+					"2024-01-31",
+				);
+			});
+		}
 	}
 }
