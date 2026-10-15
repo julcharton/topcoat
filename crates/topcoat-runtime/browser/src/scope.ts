@@ -1,6 +1,6 @@
 import { dehydrate } from "./expression/dehydrate";
 import type { DehydratedSurrogate } from "./expression/serialized";
-import { Effect, untrack } from "./reactivity";
+import { afterEffects, Effect, untrack } from "./reactivity";
 import type { RenderToken } from "./render/frames";
 import type { RenderUnit } from "./render/unit";
 import type { Runtime } from "./runtime";
@@ -38,6 +38,7 @@ export class Scope {
 	/** Regions directly owned by this scope, indexed by region id. */
 	readonly regions = new Map<string, Region>();
 	private readonly effects = new Set<Effect>();
+	private readonly pendingDom = new Map<() => void, "scope" | "render">();
 	private readonly cleanups: (() => void)[] = [];
 	/** Aborted on release, removing listeners and cancelling owned requests. */
 	private readonly listenerController = new AbortController();
@@ -116,6 +117,26 @@ export class Scope {
 		return undefined;
 	}
 
+	/** Owns a one-shot callback until local reactive updates have settled. */
+	afterDom(callback: () => void, lifetime: "scope" | "render" = "scope"): void {
+		if (this.disposed) return;
+		const cancel = afterEffects(() => {
+			this.pendingDom.delete(cancel);
+			this.invoke(callback);
+		});
+		this.pendingDom.set(cancel, lifetime);
+	}
+
+	/** A newer request makes queued insertion hooks for this content stale. */
+	cancelRenderCallbacks(): void {
+		for (const [cancel, lifetime] of this.pendingDom) {
+			if (lifetime !== "render") continue;
+			cancel();
+			this.pendingDom.delete(cancel);
+		}
+		for (const child of this.children) child.cancelRenderCallbacks();
+	}
+
 	/**
 	 * Aborts attached work when this scope is released.
 	 */
@@ -125,13 +146,13 @@ export class Scope {
 
 	/** Registers an owned resource, releasing late registrations immediately. */
 	onCleanup(cleanup: () => void): void {
-		if (this.disposed) this.clean(cleanup);
+		if (this.disposed) this.invoke(cleanup);
 		else this.cleanups.push(cleanup);
 	}
 
-	private clean(cleanup: () => void): void {
+	private invoke(callback: () => void): void {
 		try {
-			untrack(cleanup);
+			untrack(callback);
 		} catch (error) {
 			this.runtime.reportError(error);
 		}
@@ -168,8 +189,10 @@ export class Scope {
 
 		for (const effect of this.effects) effect.dispose();
 		this.effects.clear();
+		for (const cancel of this.pendingDom.keys()) cancel();
+		this.pendingDom.clear();
 		untrack(() => this.listenerController.abort());
-		for (const cleanup of this.cleanups.reverse()) this.clean(cleanup);
+		for (const cleanup of this.cleanups.reverse()) this.invoke(cleanup);
 		this.cleanups.length = 0;
 
 		for (const id of this.signalIds) into.add(id);

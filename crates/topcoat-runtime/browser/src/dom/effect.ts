@@ -35,9 +35,37 @@ export class EffectContext {
 		this.scope.onCleanup(cleanup);
 	}
 
+	after_dom(callback: () => void): void {
+		this.scope.afterDom(() => {
+			if (this.element.isConnected) callback();
+		});
+	}
+
 	is_active(): Bool {
 		return new Bool(!this.scope.isDisposed);
 	}
+}
+
+/** Runs once for this installed content, after bindings and effects settle. */
+export function setupAfterRender(
+	element: Element,
+	source: string,
+	scope: Scope,
+): void {
+	const expression = compile<(context: EffectContext) => void>(
+		source,
+		"after_render",
+	);
+	scope.afterDom(() => {
+		if (!element.isConnected) return;
+		const invocation = new Scope(scope, scope.runtime, scope.unit);
+		try {
+			expression(scope.runtime.context)(new EffectContext(element, invocation));
+		} catch (error) {
+			invocation.dispose();
+			scope.runtime.reportError(error);
+		}
+	}, "render");
 }
 
 /** Queues initialization so hydration and server subscriptions finish first. */

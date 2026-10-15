@@ -86,6 +86,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 	 * accepting a response of the `accept` media type.
 	 */
 	protected request(signal: AbortSignal, accept: string): Promise<Response> {
+		this.cancelRenderCallbacks();
 		const { url, headers, body } = this.rerunRequest();
 		return fetch(url, {
 			method: "POST",
@@ -188,6 +189,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 				this.readInputs();
 				for (const id of scope.collectDependencies()) registry.read(id);
 				if (this.subscribing) return;
+				this.cancelRenderCallbacks();
 				this.requestController.schedule(() => this.refresh());
 			});
 		} finally {
@@ -208,6 +210,11 @@ export abstract class RenderUnit implements ConnectionTarget {
 			this.subscribing = false;
 		}
 		this.scheduleConnection();
+	}
+
+	/** Invalidates pending insertion hooks while keeping the visible content live. */
+	cancelRenderCallbacks(): void {
+		this.contentScope.cancelRenderCallbacks();
 	}
 
 	/**

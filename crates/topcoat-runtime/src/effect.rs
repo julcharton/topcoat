@@ -77,7 +77,7 @@ impl IntoIterator for Effect {
     }
 }
 
-/// Owns resources for one invocation of an [`effect`].
+/// Owns resources for one invocation of an [`effect`] or [`crate::after_render`].
 ///
 /// This browser-only facade is passed to compiled Rust callbacks. Raw
 /// JavaScript can also use its `element` and `abortSignal` properties. Pass
@@ -89,6 +89,27 @@ pub struct EffectContext {
 }
 
 impl EffectContext {
+    /// Runs a synchronous callback once after local reactive updates settle.
+    ///
+    /// Reads in the callback do not subscribe the effect. Writes are settled
+    /// before the next queued callback. Each call queues separate work, even
+    /// when no binding needs updating. This does not wait for server requests,
+    /// streamed content, layout, or paint.
+    ///
+    /// Rerunning or disposing this invocation cancels its queued work. The
+    /// callback is also skipped if the attached element is disconnected.
+    /// Errors are reported without blocking other callbacks.
+    ///
+    /// ```compile_fail
+    /// use topcoat::runtime::{EffectContext, effect, expr};
+    /// let hook = effect(expr!(|scope: EffectContext| {
+    ///     scope.after_dom(async || {});
+    /// }));
+    /// ```
+    pub fn after_dom(&self, _callback: impl FnOnce() + 'static) {
+        unreachable!("effect contexts are only available in the browser");
+    }
+
     /// The element this effect is attached to, as a browser event target.
     #[must_use]
     pub fn target(&self) -> EventTarget {

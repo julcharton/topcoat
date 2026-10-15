@@ -1,7 +1,24 @@
 let activeEffect: Effect | null = null;
 const pending = new Set<Effect>();
+const settled = new Set<() => void>();
 let scheduled = false;
 let flushing = false;
+
+function scheduleFlush(): void {
+	if (scheduled || flushing) return;
+	scheduled = true;
+	queueMicrotask(() => {
+		scheduled = false;
+		flushEffects();
+	});
+}
+
+/** Queues one untracked callback after reactive updates, returning its cancel. */
+export function afterEffects(callback: () => void): () => void {
+	settled.add(callback);
+	scheduleFlush();
+	return () => settled.delete(callback);
+}
 
 export interface WriteSignal<T> {
 	(): T;
@@ -64,13 +81,7 @@ export class Effect {
 		// the running effect again.
 		if (this.disposed || this.running) return;
 		pending.add(this);
-		if (!scheduled && !flushing) {
-			scheduled = true;
-			queueMicrotask(() => {
-				scheduled = false;
-				flushEffects();
-			});
-		}
+		scheduleFlush();
 	}
 
 	run(): void {
@@ -109,18 +120,31 @@ export function flushEffects(): void {
 	try {
 		// Removing each entry before running it allows writes from other
 		// effects to enqueue it again, while repeated writes stay batched.
-		for (const effect of pending) {
-			pending.delete(effect);
-			const count = (runs.get(effect) ?? 0) + 1;
-			runs.set(effect, count);
-			if (count > 100) {
-				errors.push(new Error("Reactive update cycle exceeded 100 runs"));
-				continue;
+		while (pending.size > 0 || settled.size > 0) {
+			for (const effect of pending) {
+				pending.delete(effect);
+				const count = (runs.get(effect) ?? 0) + 1;
+				runs.set(effect, count);
+				if (count > 100) {
+					errors.push(new Error("Reactive update cycle exceeded 100 runs"));
+					continue;
+				}
+				try {
+					effect.run();
+				} catch (error) {
+					errors.push(error);
+				}
 			}
-			try {
-				effect.run();
-			} catch (error) {
-				errors.push(error);
+			// A callback can write signals. Settle those writes before invoking
+			// the next callback, including callbacks queued by other callbacks.
+			const callback = settled.values().next().value;
+			if (callback !== undefined) {
+				settled.delete(callback);
+				try {
+					untrack(callback);
+				} catch (error) {
+					errors.push(error);
+				}
 			}
 		}
 	} finally {

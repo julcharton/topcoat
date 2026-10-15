@@ -22,6 +22,8 @@ export type RerunRequest = {
 
 /** Receives rendered content and describes the request for new renders. */
 export interface ConnectionTarget extends FrameTarget {
+	/** Invalidates queued insertion work from the content being replaced. */
+	cancelRenderCallbacks(): void;
 	rerunRequest(): RerunRequest;
 	reportError(error: unknown): void;
 	/**
@@ -134,6 +136,7 @@ export class Connection {
 	run(target: ConnectionTarget): boolean {
 		const socket = this.socket;
 		if (socket === null || !this.isOpen) return false;
+		target.cancelRenderCallbacks();
 		this.stop(target);
 		this.lastRun += 1;
 		const run = this.lastRun;

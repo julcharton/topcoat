@@ -59,6 +59,7 @@ class FakeSocket extends EventTarget {
 function target(url: string, body = "{}") {
 	const self = {
 		body,
+		cancelRenderCallbacks: vi.fn(),
 		rerunRequest: vi.fn(() => ({
 			url,
 			headers: { "Content-Type": "application/json" },

@@ -237,6 +237,81 @@ let measure = effect(expr!(|scope: EffectContext| {
 
 Raw integrations must cancel their queued work or check `abortSignal.aborted` before applying results. The context owns only registered resources. It does not cancel arbitrary promises or browser callbacks automatically.
 
+# DOM scheduling
+
+Use `scope.after_dom(callback)` inside an effect or an owned listener when work needs the current local bindings to settle. The callback runs once without tracking its signal reads. Read the signals that should trigger the effect before queuing the callback. Each call queues separate work, including when no binding needs updating.
+
+```rust
+use topcoat::{
+    Result, context::Cx,
+    runtime::{EffectContext, effect, expr, signal},
+    view::{View, component, view},
+};
+
+#[component]
+async fn filtered_option(cx: &Cx) -> Result<impl View> {
+    let visible = signal(cx, || false);
+    let scroll = effect(expr!(|scope: EffectContext| {
+        if visible.get() {
+            let target = scope.clone();
+            scope.after_dom(|| {
+                raw!("${target}.element.scrollIntoView({ block: 'nearest' })");
+            });
+        }
+    }));
+    Ok(view! {
+        <button @click=$(|_event| visible.set(true))>"Show option"</button>
+        <button :hidden=$(!visible.get()) (scroll)>"Option"</button>
+    })
+}
+```
+
+The runtime drains local bindings and effects, including cascading writes, before invoking a scheduled callback. If that callback writes signals, their updates settle before the next callback. Callbacks run in registration order and may queue further work on the same queue. They do not wait for callbacks registered after them. Rerunning or disposing the owning invocation cancels its pending callbacks, and a disconnected element is skipped. A callback error is reported without blocking other callbacks or future updates. The callback does not wait for server requests, later stream frames, layout, or paint. It can read layout through native browser APIs if needed.
+
+## After server content arrives
+
+Use [`after_render`] for work attached to particular server-rendered content. Spread it into an element returned by the shard or live emission that needs the work. The callback runs once after that insertion is hydrated and local bindings and effects settle. It also runs on initial hydration. Signal reads in this hook do not make it reactive. An element can carry one `effect` and one `after_render` hook.
+
+```rust
+use topcoat::{
+    Result, context::Cx,
+    runtime::{EffectContext, Signal, after_render, expr, shard, signal},
+    view::{View, component, view},
+};
+
+#[shard]
+async fn month_grid(requested: Signal<usize>) -> Result<impl View> {
+    let rendered_month = requested.get();
+    // Load and validate the requested month's dates here.
+    let focus = after_render(expr!(|scope: EffectContext| {
+        if requested.get() == rendered_month {
+            raw!("${scope}.element.querySelector('[data-day]')?.focus()");
+        }
+    }));
+    Ok(view! {
+        <section (focus)>
+            <h2>"Month " (rendered_month)</h2>
+            <button data-day="">"First available day"</button>
+        </section>
+    })
+}
+
+#[component]
+async fn calendar(cx: &Cx) -> Result<impl View> {
+    let requested = signal(cx, || 1usize);
+    Ok(view! {
+        <button @click=$(|_event| requested.increment())>"Next month"</button>
+        month_grid(requested: requested)
+    })
+}
+```
+
+The hook travels with the returned month. The runtime rejects canceled requests and stale render frames, and cancels a queued hook when its owner or an enclosing render starts a newer request. The requested-month comparison adds application intent validation when preserved signals and server snapshots differ. It does not establish render ownership. For focus on a specific date, capture that date with the returned markup and compare it with the current requested-date signal as well.
+
+Each accepted insertion has its own hook invocation and resources. Replacement cleans up the previous invocation and initializes a new one even when morphing reuses the DOM element. A nested shard or live-region replacement invokes only hooks in its new content. It does not invoke an enclosing or sibling hook. Frames from an older render cannot invoke hooks inside a region now owned by a newer render. For a live region, put the hook in the emission containing the finished content. An enclosing hook does not wait for later emissions or for the stream to end.
+
+With no insertion there is no new hook invocation. A failed request leaves existing content in place and does not invoke a hook for that request. It does not disable future hooks. A later accepted nested render or live swap owns a fresh hook, including a swap from an earlier transport that still owns the region. A failure after an accepted stream insertion does not undo a hook that already ran. Navigation, replacement, or scope removal cancels pending work and releases registered resources. If an element is removed directly by external JavaScript before its callback runs, the callback is skipped, but external removal does not dispose the owning Topcoat scope. A hook error releases that invocation's resources and leaves other work runnable. `after_dom` callbacks belonging to ordinary effects can still run against the current DOM while a server request is pending.
+
 # Procedures
 
 A **procedure** is an async server function called from a runtime expression. Use one when an event handler needs a server resource, such as a database:
@@ -360,6 +435,7 @@ Use `.get_untracked()` or `.read_untracked()` to read a value on the server with
 [`EventTarget`]: struct.EventTarget.html
 [`EffectContext`]: struct.EffectContext.html
 [`effect`]: fn.effect.html
+[`after_render`]: fn.after_render.html
 [`Expr::dynamic`]: struct.Expr.html#method.dynamic
 [`expr!`]: macro.expr.html
 [`signal`]: fn.signal.html
