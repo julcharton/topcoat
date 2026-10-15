@@ -309,10 +309,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn write_revision_panics_server_side_without_value_bounds() {
         struct NoVocabulary;
-        let _: U64Surrogate = surrogate(NoVocabulary).write_revision();
+        assert!(
+            std::panic::catch_unwind(|| {
+                let _: U64Surrogate = surrogate(NoVocabulary).write_revision();
+            })
+            .is_err()
+        );
     }
 
     #[test]
