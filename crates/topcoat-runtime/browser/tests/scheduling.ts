@@ -134,6 +134,135 @@ it("settles more than 100 independent after_dom writes before the final observer
 	);
 });
 
+it("settles independent after_dom branches that each schedule further work", () => {
+	let observed = "missing";
+	vi.stubGlobal("hook", (context: EffectContext) => {
+		for (let value = 2; value <= 151; value++) {
+			context.after_dom(() => {
+				context.after_dom(() =>
+					runtime.context.signal("month").set(new F64(value)),
+				);
+			});
+		}
+		context.after_dom(() => {
+			context.after_dom(() => {
+				observed = document.querySelector("input")?.value ?? "missing";
+			});
+		});
+	});
+	mount(`${declaration}<section data-topcoat-effect="hook"></section>
+		<input data-topcoat-bind:value="cx.signal('month').get()">`);
+	expect(flushEffects).not.toThrow();
+	expect(runtime.context.signal("month").get()).toEqual(new F64(151));
+	expect(document.querySelector("input")?.value).toBe("151");
+	expect(observed).toBe("151");
+});
+
+it.each([
+	1, 2,
+])("bounds after_dom feedback through %i effects and recovers unrelated work", (count) => {
+	const escapeLimit = 300;
+	let callbacks = 0;
+	let escaped = false;
+	let feedback = true;
+	const observed: number[] = [];
+	const values = Array.from({ length: count }, () => signal(0));
+	vi.stubGlobal(
+		"hooks",
+		values.map((value, index) => (context: EffectContext) => {
+			const current = value();
+			observed.push(current);
+			if (!feedback) return;
+			context.after_dom(() => {
+				if (++callbacks === escapeLimit) {
+					escaped = true;
+					return;
+				}
+				values[(index + 1) % count]?.set(current + 1);
+			});
+		}),
+	);
+	let independent!: EffectContext;
+	const unrelated = vi.fn(() =>
+		runtime.context.signal("month").set(new F64(2)),
+	);
+	vi.stubGlobal("independent", (context: EffectContext) => {
+		independent = context;
+		context.after_dom(unrelated);
+	});
+	mount(`${declaration}<input data-topcoat-bind:value="cx.signal('month').get()">
+			${values.map((_, index) => `<div data-topcoat-effect="hooks[${index}]"></div>`).join("")}
+			<div data-topcoat-effect="independent"></div>`);
+	const errors: unknown[] = [];
+	vi.spyOn(runtime, "reportError").mockImplementation((error) =>
+		errors.push(error),
+	);
+	try {
+		flushEffects();
+	} catch (error) {
+		errors.push(error);
+	}
+	feedback = false;
+	expect.soft(escaped).toBe(false);
+	expect.soft(callbacks).toBeLessThan(escapeLimit);
+	expect(callbacks).toBeGreaterThan(1);
+	expect.soft(errors.length).toBeGreaterThan(0);
+	for (const error of errors) expect(error).toBeInstanceOf(Error);
+	expect(unrelated).toHaveBeenCalledTimes(1);
+	expect(document.querySelector("input")?.value).toBe("2");
+
+	// A later external update starts fresh, including for the stopped effect.
+	const errorCount = errors.length;
+	values[0]?.set(-1);
+	independent.after_dom(() => runtime.context.signal("month").set(new F64(3)));
+	expect(flushEffects).not.toThrow();
+	expect(observed.at(-1)).toBe(-1);
+	expect(errors).toHaveLength(errorCount);
+	expect(document.querySelector("input")?.value).toBe("3");
+});
+
+it("bounds after_dom callback self-requeue without disabling its scope", () => {
+	const escapeLimit = 300;
+	let callbacks = 0;
+	let escaped = false;
+	let context!: EffectContext;
+	const unrelated = vi.fn();
+	vi.stubGlobal("hook", (value: EffectContext) => {
+		context = value;
+		const repeat = () => {
+			if (++callbacks === escapeLimit) {
+				escaped = true;
+				return;
+			}
+			// EffectContext creates a new owned wrapper for every registration.
+			context.after_dom(repeat);
+		};
+		context.after_dom(repeat);
+		context.after_dom(unrelated);
+	});
+	mount('<section data-topcoat-effect="hook"></section>');
+	const errors: unknown[] = [];
+	vi.spyOn(runtime, "reportError").mockImplementation((error) =>
+		errors.push(error),
+	);
+	try {
+		flushEffects();
+	} catch (error) {
+		errors.push(error);
+	}
+	expect.soft(escaped).toBe(false);
+	expect.soft(callbacks).toBeLessThan(escapeLimit);
+	expect(callbacks).toBeGreaterThan(1);
+	expect.soft(errors.length).toBeGreaterThan(0);
+	for (const error of errors) expect(error).toBeInstanceOf(Error);
+	expect(unrelated).toHaveBeenCalledTimes(1);
+	const errorCount = errors.length;
+	context.after_dom(unrelated);
+	expect(flushEffects).not.toThrow();
+	expect(errors).toHaveLength(errorCount);
+	expect(unrelated).toHaveBeenCalledTimes(2);
+});
+
 it.each([
 	false,
 	true,

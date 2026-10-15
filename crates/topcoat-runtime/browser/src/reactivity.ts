@@ -1,6 +1,9 @@
 let activeEffect: Effect | null = null;
-const pending = new Set<Effect>();
-const settled = new Set<() => void>();
+// Queue values retain the deepest callback ancestry when work is batched.
+const pending = new Map<Effect, number>();
+const settled = new Map<() => void, number>();
+/** Settled callback phases on the current causal path, carried through effects. */
+let callbackDepth = 0;
 let scheduled = false;
 let flushing = false;
 
@@ -15,7 +18,15 @@ function scheduleFlush(): void {
 
 /** Queues one untracked callback after reactive updates, returning its cancel. */
 export function afterEffects(callback: () => void): () => void {
-	settled.add(callback);
+	// Bound feedback even when each iteration creates a new callback wrapper.
+	// Siblings inherit the same depth rather than consuming each other's budget.
+	if (callbackDepth >= 100) {
+		throw new Error("Reactive callback cycle exceeded 100 phases");
+	}
+	settled.set(
+		callback,
+		Math.max(settled.get(callback) ?? 0, callbackDepth + 1),
+	);
 	scheduleFlush();
 	return () => settled.delete(callback);
 }
@@ -80,12 +91,14 @@ export class Effect {
 		// Writes during an effect notify other subscribers but do not schedule
 		// the running effect again.
 		if (this.disposed || this.running) return;
-		pending.add(this);
+		pending.set(this, Math.max(pending.get(this) ?? 0, callbackDepth));
 		scheduleFlush();
 	}
 
 	run(): void {
 		if (this.disposed || this.running) return;
+		const previousDepth = callbackDepth;
+		callbackDepth = Math.max(callbackDepth, pending.get(this) ?? 0);
 		pending.delete(this);
 		this.unsubscribe();
 		const previous = activeEffect;
@@ -96,6 +109,7 @@ export class Effect {
 		} finally {
 			this.running = false;
 			activeEffect = previous;
+			callbackDepth = previousDepth;
 		}
 	}
 
@@ -121,11 +135,11 @@ export function flushEffects(): void {
 		// Removing each entry before running it allows writes from other
 		// effects to enqueue it again, while repeated writes stay batched.
 		while (pending.size > 0 || settled.size > 0) {
-			for (const effect of pending) {
-				pending.delete(effect);
+			for (const effect of pending.keys()) {
 				const count = (runs.get(effect) ?? 0) + 1;
 				runs.set(effect, count);
 				if (count > 100) {
+					pending.delete(effect);
 					errors.push(new Error("Reactive update cycle exceeded 100 runs"));
 					continue;
 				}
@@ -135,18 +149,23 @@ export function flushEffects(): void {
 					errors.push(error);
 				}
 			}
-			// A settled callback starts a new drain. Independent callback writes
-			// must not share the cycle budget of the reactive cascade above.
+			// Count reactive cycles per drain; callback depth bounds feedback
+			// across drains without counting independent callback writes together.
 			runs.clear();
 			// A callback can write signals. Settle those writes before invoking
 			// the next callback, including callbacks queued by other callbacks.
-			const callback = settled.values().next().value;
-			if (callback !== undefined) {
+			const entry = settled.entries().next().value;
+			if (entry !== undefined) {
+				const [callback, depth] = entry;
 				settled.delete(callback);
+				const previousDepth = callbackDepth;
+				callbackDepth = depth;
 				try {
 					untrack(callback);
 				} catch (error) {
 					errors.push(error);
+				} finally {
+					callbackDepth = previousDepth;
 				}
 			}
 		}
