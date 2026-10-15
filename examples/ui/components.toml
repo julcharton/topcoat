@@ -45,7 +45,7 @@ hash = "sha256:fb7cb8f77818fe9a76f62b0f705494a5e5a000de9b6a49d05cca973b028abf2d"
 file = "src/components/checkbox.rs"
 
 [registries.topcoat.components.combobox]
-hash = "sha256:993320c02dacc39c154b0661657cc175e8895a8dfda7270b7efc24eec5f085a6"
+hash = "sha256:2e7fb91e2082879778d9e218d188efb6d3b7e8db87e0fc82d6985ebd77ec6e5f"
 file = "src/components/combobox.rs"
 
 [registries.topcoat.components.dialog]

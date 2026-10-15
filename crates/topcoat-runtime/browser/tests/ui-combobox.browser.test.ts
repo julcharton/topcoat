@@ -256,6 +256,92 @@ for (const [name, html, label] of [
 	});
 }
 
+for (const naming of ["aria-label", "aria-labelledby", "both"] as const) {
+	it(`preserves optional ${naming} naming through absent and populated values`, async () => {
+		const { input } = mount(fixture.optional_naming[naming]);
+		async function named(name: string) {
+			input.focus();
+			await userEvent.keyboard("{ArrowDown}");
+			await expect
+				.element(page.getByRole("combobox", { name, exact: true }))
+				.toBeVisible();
+			await expect
+				.element(page.getByRole("listbox", { name, exact: true }))
+				.toBeVisible();
+		}
+		await named("Region");
+		if (naming !== "aria-labelledby") {
+			await userEvent.click(
+				page.getByRole("button", { name: "Quoted label", exact: true }),
+			);
+			await named('Deploy <region> & "zone"');
+			await userEvent.click(
+				page.getByRole("button", { name: "Blank label", exact: true }),
+			);
+			await named("Region");
+			await userEvent.click(
+				page.getByRole("button", { name: "Set label", exact: true }),
+			);
+			await named("Deploy region");
+		}
+		if (naming !== "aria-label") {
+			await userEvent.click(
+				page.getByRole("button", { name: "Set reference", exact: true }),
+			);
+			await named("Region caption");
+		}
+		if (naming === "both") {
+			await userEvent.click(
+				page.getByRole("button", { name: "Clear label", exact: true }),
+			);
+			await named("Region caption");
+			await userEvent.click(
+				page.getByRole("button", { name: "Set label", exact: true }),
+			);
+			await named("Region caption");
+		}
+		if (naming !== "aria-label") {
+			await userEvent.click(
+				page.getByRole("button", { name: "Clear reference", exact: true }),
+			);
+			await named(naming === "both" ? "Deploy region" : "Region");
+		}
+		if (naming !== "aria-labelledby") {
+			await userEvent.click(
+				page.getByRole("button", { name: "Clear label", exact: true }),
+			);
+			await named("Region");
+		}
+	});
+}
+
+for (const [fixtureName, control, initial, populated] of [
+	["static_label", "reference", "Deploy region", "Region caption"],
+	["static_reference", "label", "Region caption", "Region caption"],
+] as const) {
+	it(`preserves ${fixtureName} precedence over optional naming`, async () => {
+		const { input } = mount(fixture.optional_naming[fixtureName]);
+		for (const [action, name] of [
+			[null, initial],
+			[`Set ${control}`, populated],
+			[`Clear ${control}`, initial],
+		] as const) {
+			if (action)
+				await userEvent.click(
+					page.getByRole("button", { name: action, exact: true }),
+				);
+			input.focus();
+			await userEvent.keyboard("{ArrowDown}");
+			await expect
+				.element(page.getByRole("combobox", { name, exact: true }))
+				.toBeVisible();
+			await expect
+				.element(page.getByRole("listbox", { name, exact: true }))
+				.toBeVisible();
+		}
+	});
+}
+
 it("initializes an actual Rust-rendered large catalog and retains the identity active at response time", async () => {
 	const { input, form, popup } = mount();
 	input.focus();

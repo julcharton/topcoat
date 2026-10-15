@@ -7,7 +7,9 @@ use topcoat::{
         Effect, EffectContext, ElementRef, Event, Expr, HtmlElement, InputElement, ScrollAlignment,
         ScrollIntoViewOptions, Signal, after_render, effect, expr, record, signal,
     },
-    view::{Attributes, Child, View, attributes, class, component, element_id, view},
+    view::{
+        AttributeValue, Attributes, Child, View, attributes, class, component, element_id, view,
+    },
 };
 
 use super::{
@@ -489,6 +491,7 @@ impl ComboboxState {
 /// Give the visible label [`ComboboxState::label_id`] as its ID and
 /// [`ComboboxState::input_id`] as its `for` attribute. Explicit `aria-label` or
 /// `aria-labelledby` in `attrs` names both the input and popup.
+/// When both naming values are absent or empty, the popup references the visible label.
 /// Classes go on the wrapper. Other attributes go on the input. IDs, form/value
 /// bindings, accessibility state and interaction handlers are reserved.
 #[component]
@@ -549,17 +552,57 @@ pub async fn combobox(
                 .is_some_and(|key| reserved.contains(&key))
     }));
     let mut popup_naming = Attributes::new();
-    popup_naming.extend(forwarded.iter().filter_map(|(key, value)| {
+    for (key, value) in &forwarded {
         let name = key.as_str().to_ascii_lowercase();
-        let name = name.strip_prefix("data-topcoat-bind:").unwrap_or(&name);
-        if matches!(name, "aria-label" | "aria-labelledby") && value.is_present() {
-            Some((key.clone(), value.clone()))
-        } else {
-            None
+        let attribute = name.strip_prefix("data-topcoat-bind:").unwrap_or(&name);
+        if matches!(attribute, "aria-label" | "aria-labelledby") {
+            popup_naming.insert(cx, name, value);
         }
-    }));
-    if popup_naming.iter().next().is_none() {
+    }
+    let [has_label, has_reference] =
+        ["aria-label", "aria-labelledby"].map(|name| match popup_naming.get(name) {
+            Some(AttributeValue::PromotedStr { value, .. }) => !value.trim().is_empty(),
+            Some(AttributeValue::StaticStr { value, .. }) => !value.trim().is_empty(),
+            Some(AttributeValue::String { value, .. }) => !value.trim().is_empty(),
+            _ => false,
+        });
+    let label = popup_naming.get("data-topcoat-bind:aria-label").cloned();
+    let reference = popup_naming
+        .get("data-topcoat-bind:aria-labelledby")
+        .cloned();
+    if !has_label && !has_reference {
         popup_naming.insert(cx, "aria-labelledby", state.label_id());
+    }
+    if reference.is_some() || (!has_reference && label.is_some()) {
+        // Attributes retain compiled bindings, not their original Expr types.
+        // Compose only the two naming bindings, preserving their escaping and
+        // signal reads. An explicit label must not be masked by our reference.
+        let reference_end = if reference.is_some() { ")" } else { "null)" };
+        let label_start = if label.is_some() {
+            "named(("
+        } else if has_label {
+            "true"
+        } else {
+            "false"
+        };
+        let label_end = if label.is_some() { "))" } else { "" };
+        let (_, fallback) = Expr::from(state.label_id().to_owned()).into_evaluated_and_js();
+        popup_naming.insert(
+            cx,
+            "data-topcoat-bind:aria-labelledby",
+            (
+                "(() => { const named = value => value.isAttributePresent() && value.toAttributeValue().trim() !== ''; const reference = (",
+                reference,
+                reference_end,
+                "; return reference && named(reference) ? reference : ",
+                label_start,
+                label,
+                label_end,
+                " ? null : ",
+                fallback,
+                "; })()",
+            ),
+        );
     }
     let input_ref = ElementRef::<InputElement>::new(state_input_id.clone());
     let current = state.current();

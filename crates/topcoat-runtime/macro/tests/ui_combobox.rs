@@ -13,7 +13,7 @@ use topcoat::{
     Result,
     context::Cx,
     runtime::{Event, SignalValues, shard, signal},
-    view::{View, ViewExt, attributes, component, view},
+    view::{Attributes, View, ViewExt, attributes, component, view},
 };
 
 fn catalog(version: &str) -> Vec<ComboboxOption> {
@@ -69,6 +69,7 @@ async fn harness(
     #[default("owner")] owner: &str,
     #[default("Region")] label: &str,
     #[default("")] naming: &str,
+    #[default] attrs: Attributes,
 ) -> Result<impl View> {
     // Initial selection is stable while the shard's catalog changes independently.
     let options = catalog("initial");
@@ -97,6 +98,7 @@ async fn harness(
                 required: required,
                 disabled: disabled,
                 attrs: attributes! {
+                    (attrs)
                     placeholder="Choose a region"
                     aria-describedby="hint"
                     if naming == "aria-label" {
@@ -112,6 +114,49 @@ async fn harness(
             <p id="hint">"Choose an available region."</p>
         </fieldset>
         <button id="outside">"Outside"</button>
+    })
+}
+
+#[component]
+async fn optional_naming(cx: &Cx, naming: &str, #[default] attrs: Attributes) -> Result<impl View> {
+    let label = signal(cx, || None::<String>);
+    let labelledby = signal(cx, || None::<String>);
+    Ok(view! {
+        <button @click=$(|_event: Event| label.set(Some("Deploy region".to_owned())))>
+            "Set label"
+        </button>
+        <button @click=$(|_event: Event| label.set(None))>"Clear label"</button>
+        <button @click=$(|_event: Event| label.set(Some(" \t ".to_owned())))>
+            "Blank label"
+        </button>
+        <button
+            @click=$(|_event: Event| label.set(
+                    Some("Deploy <region> & \"zone\"".to_owned()),
+                ))
+        >
+            "Quoted label"
+        </button>
+        <button
+            @click=$(|_event: Event| labelledby.set(Some("owner-caption".to_owned())))
+        >
+            "Set reference"
+        </button>
+        <button @click=$(|_event: Event| labelledby.set(None))>
+            "Clear reference"
+        </button>
+        harness(
+            version: "initial",
+            default: None,
+            attrs: attributes! {
+                (attrs)
+                if naming != "aria-labelledby" {
+                    :aria-label=$(label.get())
+                }
+                if naming != "aria-label" {
+                    :aria-labelledby=$(labelledby.get())
+                }
+            }
+        )
     })
 }
 
@@ -273,6 +318,37 @@ async fn compiled_combobox_fixture_is_current() {
     for naming in ["aria-label", "aria-labelledby"] {
         fixture[naming] = stable_html(
             &view! { cx => harness(version: "initial", default: None, naming: naming) }
+                .single()
+                .await
+                .unwrap()
+                .render(cx),
+        )
+        .into();
+    }
+    for naming in ["aria-label", "aria-labelledby", "both"] {
+        fixture["optional_naming"][naming] = stable_html(
+            &view! { cx => optional_naming(naming: naming) }
+                .single()
+                .await
+                .unwrap()
+                .render(cx),
+        )
+        .into();
+    }
+    for (name, naming, attrs) in [
+        (
+            "static_label",
+            "aria-labelledby",
+            attributes! { cx => aria-label="Deploy region" },
+        ),
+        (
+            "static_reference",
+            "aria-label",
+            attributes! { cx => aria-labelledby="owner-caption" },
+        ),
+    ] {
+        fixture["optional_naming"][name] = stable_html(
+            &view! { cx => optional_naming(naming: naming, attrs: attrs) }
                 .single()
                 .await
                 .unwrap()
