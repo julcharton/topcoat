@@ -8,7 +8,7 @@ import type { Runtime } from "../runtime";
 import type { Scope } from "../scope";
 import type { SignalId } from "../signal-registry";
 import type { RerunRequest } from "./connection";
-import { FRAMES_MEDIA_TYPE, newRender, type RenderToken } from "./frames";
+import { FRAMES_MEDIA_TYPE, type RenderToken } from "./frames";
 import { RUNTIME_HEADER } from "./request";
 import { RenderUnit } from "./unit";
 
@@ -87,7 +87,7 @@ export class PageUnit extends RenderUnit {
 			DEV_RUNTIME_EVENT,
 			(event) => {
 				const { detail } = event as CustomEvent<DevRuntimeDetail>;
-				const render = newRender();
+				const render = this.beginRender();
 				detail.runtime = {
 					request: (signal, finished) => {
 						this.devRefresh = finished;

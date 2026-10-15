@@ -188,6 +188,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 				this.readInputs();
 				for (const id of scope.collectDependencies()) registry.read(id);
 				if (this.subscribing) return;
+				scope.cancelRenderCallbacks();
 				this.requestController.schedule(() => this.refresh());
 			});
 		} finally {
@@ -211,6 +212,15 @@ export abstract class RenderUnit implements ConnectionTarget {
 	}
 
 	/**
+	 * Begins a render by canceling queued insertion hooks in the current
+	 * content. Keeps that content live until a response replaces it.
+	 */
+	beginRender(): RenderToken {
+		this.contentScope.cancelRenderCallbacks();
+		return newRender();
+	}
+
+	/**
 	 * Re-runs this unit immediately with its current inputs.
 	 *
 	 * Content that needs a connection re-runs over the document's connection
@@ -225,7 +235,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 			return Promise.resolve();
 		}
 		connection.stop(this);
-		const render = newRender();
+		const render = this.beginRender();
 		return this.requestController.run(
 			(signal) => this.request(signal, FRAMES_MEDIA_TYPE),
 			(frame) => applyFrame(this, frame, this.label, render),

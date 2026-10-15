@@ -1,7 +1,6 @@
 import {
 	applyFrame,
 	type FrameTarget,
-	newRender,
 	type RenderToken,
 	type ServerMessage,
 } from "./frames";
@@ -22,6 +21,8 @@ export type RerunRequest = {
 
 /** Receives rendered content and describes the request for new renders. */
 export interface ConnectionTarget extends FrameTarget {
+	/** Begins a render, invalidating queued insertion work in the old content. */
+	beginRender(): RenderToken;
 	rerunRequest(): RerunRequest;
 	reportError(error: unknown): void;
 	/**
@@ -134,11 +135,12 @@ export class Connection {
 	run(target: ConnectionTarget): boolean {
 		const socket = this.socket;
 		if (socket === null || !this.isOpen) return false;
+		const render = target.beginRender();
 		this.stop(target);
 		this.lastRun += 1;
 		const run = this.lastRun;
 		this.runIds.set(target, run);
-		this.runs.set(run, { target, render: newRender() });
+		this.runs.set(run, { target, render });
 		const { url, headers, body } = target.rerunRequest();
 		const { pathname, search } = new URL(url, location.href);
 		const path = `${pathname}${search}`;

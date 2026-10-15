@@ -50,3 +50,51 @@ async fn effects_compile_to_attributes_without_running_on_the_server() {
     assert!(html.contains(">false<!--"), "{html}");
     assert!(!html.contains("::topcoat::dep("), "{html}");
 }
+
+#[component]
+async fn scheduled_panel(cx: &Cx) -> Result<impl View> {
+    use topcoat::runtime::after_render;
+
+    let ready = signal(cx, || false);
+    let local = effect(expr!(|scope: EffectContext| {
+        let current = ready.get();
+        scope.after_dom(|| ready.set(!current));
+    }));
+    let installed = after_render(expr!(|scope: EffectContext| {
+        ready.set(true);
+        scope.on_cleanup(|| ready.set(false));
+        scope.after_dom(|| {
+            raw!("window.settled = true");
+        });
+    }));
+    let attrs = attributes! { (installed) };
+    let direct = after_render(expr!(|_scope: EffectContext| {
+        raw!("window.inserted = true");
+    }));
+    assert!(!ready.get_untracked());
+    Ok(view! {
+        <section (attrs) (local)>
+            <button (direct)>"Action"</button>
+            <output>$(ready.get())</output>
+        </section>
+    })
+}
+
+#[tokio::test]
+async fn scheduling_compiles_without_running_callbacks_or_creating_server_dependencies() {
+    let cx = &Cx::default();
+    let html = view! { cx => scheduled_panel() }
+        .single()
+        .await
+        .unwrap()
+        .render(cx);
+    assert_eq!(
+        html.matches("data-topcoat-after-render=").count(),
+        2,
+        "{html}"
+    );
+    assert_eq!(html.matches("data-topcoat-effect=").count(), 1, "{html}");
+    assert!(html.contains(".after_dom("), "{html}");
+    assert!(html.contains(">false<!--"), "{html}");
+    assert!(!html.contains("::topcoat::dep("), "{html}");
+}

@@ -1,4 +1,4 @@
-import { compile } from "../expression/compile";
+import { compile, type Expression } from "../expression/compile";
 import { Scope } from "../scope";
 import { Bool, EventTarget } from "../surrogate";
 import type { Str } from "../surrogate/string";
@@ -35,9 +35,32 @@ export class EffectContext {
 		this.scope.onCleanup(cleanup);
 	}
 
+	after_dom(callback: () => void): void {
+		this.scope.afterDom(() => {
+			if (this.element.isConnected) callback();
+		});
+	}
+
 	is_active(): Bool {
 		return new Bool(!this.scope.isDisposed);
 	}
+}
+
+/** Runs once for this installed content, after bindings and effects settle. */
+export function setupAfterRender(
+	element: Element,
+	source: string,
+	scope: Scope,
+): void {
+	const expression = compile<(context: EffectContext) => void>(
+		source,
+		"after_render",
+	);
+	scope.afterDom(() => {
+		if (!element.isConnected) return;
+		const invocation = new Scope(scope, scope.runtime, scope.unit);
+		invoke(element, expression, invocation);
+	}, "render");
 }
 
 /** Queues initialization so hydration and server subscriptions finish first. */
@@ -56,15 +79,24 @@ export function setupEffect(
 			invocation?.dispose();
 			if (scope.isDisposed) return;
 			invocation = new Scope(scope, scope.runtime, scope.unit);
-			try {
-				expression(scope.runtime.context)(
-					new EffectContext(element, invocation),
-				);
-			} catch (error) {
-				invocation.dispose();
-				scope.runtime.reportError(error);
-			}
+			invoke(element, expression, invocation);
 		},
 		{ defer: true },
 	);
+}
+
+/** Releases everything registered by a failed invocation before reporting it. */
+function invoke(
+	element: Element,
+	expression: Expression<(context: EffectContext) => void>,
+	invocation: Scope,
+): void {
+	try {
+		expression(invocation.runtime.context)(
+			new EffectContext(element, invocation),
+		);
+	} catch (error) {
+		invocation.dispose();
+		invocation.runtime.reportError(error);
+	}
 }

@@ -1,5 +1,5 @@
 import type { Runtime } from "../runtime";
-import { newRender, type RenderToken } from "./frames";
+import type { RenderToken } from "./frames";
 import { PageRequest, type PageResponseHead, PrefetchCache } from "./prefetch";
 
 /**
@@ -189,6 +189,7 @@ export class NavigationController {
 		this.generation += 1;
 		const generation = this.generation;
 		this.current?.abort();
+		const render = this.runtime.page.beginRender();
 		const target = documentUrl(url.href);
 		const body = this.runtime.page.signalBody();
 		const request =
@@ -204,7 +205,7 @@ export class NavigationController {
 		const isCurrent = () =>
 			generation === this.generation && !this.controller.signal.aborted;
 		try {
-			await this.follow(request, url, mode, scroll, isCurrent);
+			await this.follow(request, url, mode, scroll, render, isCurrent);
 		} finally {
 			if (this.uncommitted === request) this.uncommitted = null;
 			if (this.streaming === streaming) this.streaming = null;
@@ -218,6 +219,7 @@ export class NavigationController {
 		url: URL,
 		mode: HistoryMode,
 		scroll: ScrollPosition | null,
+		render: RenderToken,
 		isCurrent: () => boolean,
 	): Promise<void> {
 		let head: PageResponseHead;
@@ -237,7 +239,6 @@ export class NavigationController {
 		if (destination.hash === "") destination.hash = url.hash;
 
 		const { page } = this.runtime;
-		const render = newRender();
 		let committed = false;
 		try {
 			for await (const frame of request.frames()) {

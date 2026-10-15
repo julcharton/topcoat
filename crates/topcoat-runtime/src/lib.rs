@@ -1,5 +1,6 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+mod after_render;
 mod arguments;
 mod bind_attribute;
 mod browser_action;
@@ -25,6 +26,7 @@ mod shard_scope;
 mod signal;
 mod surrogate;
 
+pub use after_render::*;
 pub use arguments::*;
 pub use bind_attribute::*;
 pub use browser_action::*;
