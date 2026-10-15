@@ -82,6 +82,7 @@ impl Event {
 /// Missing string properties read as empty strings and missing `checked` reads
 /// as false. Use this handle during synchronous event dispatch. It cannot be
 /// serialized into a signal or procedure argument.
+#[derive(Debug)]
 pub struct EventTarget {
     pub checked: BoolSurrogate,
     pub id: StringSurrogate,

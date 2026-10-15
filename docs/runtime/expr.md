@@ -67,6 +67,8 @@ Runtime types expose a subset of their Rust APIs:
 - [`Signal`]: `get` and `set`, plus a shorter spelling for common writes: `toggle` on a `bool` signal, `increment` and `decrement` on a numeric signal, and `push_str` on a `String` signal.
 - [`ElementRef`](struct.ElementRef.html): `id`, `clone`, and browser-only `resolve`. Capture a reference built from `view::element_id(cx)` and resolve it inside a handler closure. Each call finds the current element or returns a missing/wrong-type error. Resolved handles cannot be serialized. See [element references](index.html#element-references).
 
+Resolved element handles also expose browser-only focus, scrolling, containment, form validity, popover, and dialog actions. Capture `ScrollIntoViewOptions` constructed in Rust to choose typed scroll alignment and behavior. See [browser actions](index.html#browser-actions) for operations, results, and failure handling. These actions cannot run during server evaluation.
+
 Operations follow Rust semantics in both languages. For strings, `len` counts UTF-8 bytes, comparisons use code point order, and trimming uses Unicode `White_Space`. This means trimming keeps U+FEFF and removes U+0085.
 
 `to_lowercase` follows ordinary Rust's locale-independent Unicode casing. It handles contextual Greek sigma, supplementary characters, and mappings that expand, such as U+0130 becoming `i` followed by U+0307. Rust Unicode versions 17.0.0 and 18.0.0 are supported. Each expression carries the target Rust toolchain's Unicode version to the browser, which selects matching bundled tables. The browser's own Unicode version and locale do not affect the result. Compiling an expression with another Unicode version fails until matching tables and parity checks are added.

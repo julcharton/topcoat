@@ -1,4 +1,5 @@
 import { Bool } from "../surrogate/bool";
+import { ScrollIntoViewOptions } from "../surrogate/browser-action";
 import { ElementRef } from "../surrogate/element-ref";
 import { F64 } from "../surrogate/f64";
 import { Integer, integerType } from "../surrogate/integer";
@@ -33,6 +34,8 @@ export function hydrate(value: DehydratedSurrogate, cx: Context): unknown {
 				return new Tuple(value.map((item) => hydrate(item, cx)));
 			}
 			switch (value.t) {
+				case "ScrollIntoViewOptions":
+					return new ScrollIntoViewOptions(value);
 				case "ElementRef":
 					return new ElementRef(value.id, value.kind);
 				case "u8":

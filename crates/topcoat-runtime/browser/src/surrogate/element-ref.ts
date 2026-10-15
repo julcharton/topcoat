@@ -1,5 +1,6 @@
 import type { SerializedElementRef } from "../expression/serialized";
 import { Bool } from "./bool";
+import { ElementHandle } from "./element-handle";
 import { Result } from "./result";
 import { Str } from "./string";
 
@@ -11,7 +12,7 @@ export class ElementRef {
 	) {
 		if (
 			typeof elementId !== "string" ||
-			!["html", "input", "dialog"].includes(kind)
+			!["html", "input", "select", "textarea", "dialog"].includes(kind)
 		) {
 			throw new Error("Invalid element reference");
 		}
@@ -29,6 +30,8 @@ export class ElementRef {
 		const constructors = {
 			html: HTMLElement,
 			input: HTMLInputElement,
+			select: HTMLSelectElement,
+			textarea: HTMLTextAreaElement,
 			dialog: HTMLDialogElement,
 		};
 		if (!(element instanceof constructors[this.kind])) {
@@ -46,14 +49,7 @@ export class ElementRef {
 	}
 }
 
-/** A resolved node for browser operations. Deliberately not serializable. */
-export class ElementHandle {
-	constructor(readonly node: HTMLElement) {}
-
-	clone(): ElementHandle {
-		return new ElementHandle(this.node);
-	}
-}
+export { ElementHandle } from "./element-handle";
 
 export class ElementRefError {
 	constructor(private readonly reason: "missing" | "wrong-type") {}
