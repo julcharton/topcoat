@@ -44,6 +44,10 @@ file = "src/components/card.rs"
 hash = "sha256:fb7cb8f77818fe9a76f62b0f705494a5e5a000de9b6a49d05cca973b028abf2d"
 file = "src/components/checkbox.rs"
 
+[registries.topcoat.components.combobox]
+hash = "sha256:4d98904de265b80f972469c9ae5b881f443343018ad9f9ac28acda81c56eaa63"
+file = "src/components/combobox.rs"
+
 [registries.topcoat.components.dialog]
 hash = "sha256:97494bc086959953eff0e1a28ba72be8268cd4c38d83b50259c13788a3931e3c"
 file = "src/components/dialog.rs"

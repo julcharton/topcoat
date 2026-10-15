@@ -37,6 +37,10 @@ source = "src/components/card.rs"
 [components.checkbox]
 source = "src/components/checkbox.rs"
 
+[components.combobox]
+source = "src/components/combobox.rs"
+dependencies = ["input", "floating"]
+
 [components.dialog]
 source = "src/components/dialog.rs"
 

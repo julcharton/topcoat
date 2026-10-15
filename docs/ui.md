@@ -183,6 +183,22 @@ The components share a few conventions:
 
 Read each component's source for its props and behavior. The [`ui` example](https://github.com/tokio-rs/topcoat/tree/main/examples/ui) provides a runnable showcase.
 
+# Combobox
+
+Install an editable single-selection control with `topcoat ui add combobox`. It installs the input and floating utilities too. The [running UI example](https://github.com/tokio-rs/topcoat/tree/main/examples/ui) includes a compiled [region picker](https://github.com/tokio-rs/topcoat/blob/main/examples/ui/src/combobox_demo.rs) with required and optional controls, server search, catalog changes, native form validation, and reset.
+
+Create a `ComboboxState` with `ComboboxState::new(cx, &options, default_value)?`. Each `ComboboxOption` has a submitted `value`, a displayed `label`, and a `disabled` flag. Values must be unique and nonempty. Labels may repeat. A missing or disabled default starts empty. Use `state.input_id()` for a label's `for` attribute and `state.value()` to observe the committed `Option<String>`. Create separate states for separate controls, with keyed identities in loops.
+
+Render `combobox` with the state, a form field `name`, and an application-owned results shard as its child. `required` and `disabled` accept booleans or expressions and default to false. The optional `form` prop supports an external form owner. Classes in `attrs` apply to the wrapper. Other attributes, such as a placeholder or `aria-describedby`, apply to the input. The control reserves its IDs, form/value wiring, accessibility state, and interaction handlers.
+
+Inside the shard, load the complete current authorized catalog and pass it with the same state to `combobox_results`. Keep the shell outside the shard so typing and focus survive result updates. Search runs in ordinary server Rust using Unicode lowercase substring matching on labels, preserving catalog order. It does not perform locale collation, accent folding, pagination, or browser filtering. The complete catalog stays on the server. Only rendered options and selection/reset metadata reach the browser. See [shards](runtime/shard.md) for endpoint registration and authorization. Validate submitted values against current authorized data at the submission endpoint as well.
+
+Typing clears the committed value. An exact label is still a draft until the user chooses a suggestion. Arrow keys skip disabled choices and stop at the ends. Enter chooses the active suggestion while the popup is open; Escape preserves the draft and dismisses. Tab leaves normally. Text editing and composition stay native. Pending results cannot commit stale choices, reopen a dismissed popup, or steal focus. A new query supersedes the previous request. If a request fails, editing the query can retry. Application data errors can use an error boundary inside the shard.
+
+The unnamed visible input owns validation. The hidden named input submits only the committed value, or the empty string. Empty optional input is valid; nonempty text needs an explicit selection. Required and disabled behavior uses native form controls, including disabled fieldsets. Native reset restores the currently eligible original default, clears search/navigation/error state, and closes the popup. Canceling the reset event preserves the control's state, including when a later listener cancels it. Removing or disabling a selected option in the full catalog clears it. Filtering it out does not. Labels and reset eligibility are revalidated on each accepted results render.
+
+The popup uses scoped CSS anchor positioning with bounded scrolling. Browsers without anchor positioning use a bounded native centered popover. The control needs Topcoat's runtime script and the installed Tailwind theme, as shown in the example. It adds no application JavaScript build step.
+
 # Theming
 
 A theme defines shared styles with CSS variables in `styles.css`. Components use classes such as `bg-primary` and `text-muted-foreground` to read those variables. Edit the values to change the theme across your app.

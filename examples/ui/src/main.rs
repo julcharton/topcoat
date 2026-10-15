@@ -1,3 +1,4 @@
+mod combobox_demo;
 mod components;
 
 use components::{
@@ -248,6 +249,7 @@ async fn home(cx: &Cx) -> Result<impl View> {
                                 demo(status_card())
                                 demo(progress_card())
                                 demo(id: Some("forms"), form_card())
+                                demo(id: Some("combobox"), combobox_demo::combobox_demo())
                                 demo(checks_card())
                                 demo(switches_card())
                                 demo(radios_card())
