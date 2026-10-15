@@ -258,7 +258,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 		const nodes = this.prepare(html);
 		if (nodes === null) return;
 		this.replace(
-			(scope, orphans) => this.insert(nodes, scope, orphans),
+			(scope, adoptable) => this.insert(nodes, scope, adoptable),
 			render,
 		);
 	}
@@ -284,17 +284,10 @@ export abstract class RenderUnit implements ConnectionTarget {
 		const previous = region.scope;
 		const scope = new Scope(previous.parent, this.runtime, previous.unit);
 		region.scope = scope;
-		scope.adoptElements(previous);
-		const orphans = previous.release();
-		try {
+		scope.replace(previous, (adoptable) => {
 			morph(parent, region.start, region.end, nodes, elementMorph(scope));
-			this.runtime.hydrate(parent, region.start, region.end, scope, orphans);
-		} catch (error) {
-			scope.dispose();
-			throw error;
-		} finally {
-			for (const id of orphans) this.runtime.registry.delete(id);
-		}
+			this.runtime.hydrate(parent, region.start, region.end, scope, adoptable);
+		});
 
 		// Update the owning unit's subscriptions, including for nested shards.
 		if (!scope.isDisposed) scope.unit?.resubscribe();
@@ -305,7 +298,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 	 * result the content of `render`.
 	 */
 	protected replace(
-		insert: (scope: Scope, orphans: Set<SignalId>) => void,
+		insert: (scope: Scope, adoptable: Set<SignalId>) => void,
 		render: RenderToken,
 	): void {
 		if (this.isDisposed) return;
@@ -314,16 +307,9 @@ export abstract class RenderUnit implements ConnectionTarget {
 		const previous = this.contentScope;
 		const scope = new Scope(this.lifetime, this.runtime, this, render);
 		this.contentScope = scope;
-		scope.adoptElements(previous);
-		const orphans = previous.release();
-		try {
-			if (!scope.isDisposed) insert(scope, orphans);
+		scope.replace(previous, (adoptable) => {
+			insert(scope, adoptable);
 			if (!scope.isDisposed) this.startWatching();
-		} catch (error) {
-			scope.dispose();
-			throw error;
-		} finally {
-			for (const id of orphans) this.runtime.registry.delete(id);
-		}
+		});
 	}
 }

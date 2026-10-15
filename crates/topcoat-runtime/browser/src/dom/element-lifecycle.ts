@@ -89,11 +89,9 @@ export class ElementLifecycle {
 
 	/** Transfer ownership without callbacks; the old scope releases configuration. */
 	adopt(owner: Scope): void {
-		if (this.disposed) return;
 		this.owner.elements.delete(this.element);
 		this.owner = owner;
 		owner.elements.set(this.element, this);
-		if (owner.isDisposed) this.dispose();
 	}
 
 	configure(next: Declaration): void {
@@ -129,10 +127,9 @@ export class ElementLifecycle {
 		);
 	}
 
-	dispose(): void {
-		if (this.disposed) return;
+	dispose(owner: Scope): void {
+		if (this.disposed || this.owner !== owner) return;
 		this.disposed = true;
-		this.owner.elements.delete(this.element);
 		this.configuration?.dispose();
 		this.configuration = null;
 		const finalize = this.finalize;
@@ -141,6 +138,10 @@ export class ElementLifecycle {
 			if (finalize) untrack(finalize);
 		} catch (error) {
 			this.owner.runtime.reportError(error);
+		} finally {
+			// Reentrant morphs must still see this retiring record and reject
+			// reuse. Its owner may have changed while the finalizer ran.
+			this.owner.elements.delete(this.element);
 		}
 	}
 }
@@ -165,12 +166,9 @@ export function elementMorph(scope: Scope, retain = true): MorphOptions {
 	const byElement = new Map(
 		resources.map((resource) => [resource.element, resource]),
 	);
-	const active = () => {
-		if (scope.isDisposed) throw new Error("Content was disposed during morph");
-	};
 	return {
 		canReuseElement(current, incoming, wouldDisconnect) {
-			active();
+			scope.assertActive();
 			if (
 				wouldDisconnect &&
 				resources.some((resource) => current.contains(resource.element))
@@ -185,13 +183,13 @@ export function elementMorph(scope: Scope, retain = true): MorphOptions {
 			return byElement.get(current)?.attributes ?? new Set();
 		},
 		beforeRemove(node) {
-			active();
+			scope.assertActive();
 			for (const resource of resources) {
 				if (node.contains(resource.element)) {
-					resource.dispose();
+					resource.dispose(scope);
+					scope.assertActive();
 				}
 			}
-			active();
 		},
 	};
 }

@@ -27,6 +27,8 @@ export class Scope {
 	readonly children = new Set<Scope>();
 	/** The ids of the signals declared in this scope's content. */
 	readonly signalIds = new Set<SignalId>();
+	/** Signals awaiting declarations during replacement, still owned here. */
+	private readonly adoptableSignals = new Set<SignalId>();
 	/**
 	 * Signals read by the server for this scope's content. The owning unit
 	 * uses collectDependencies() to watch these signals across its scopes.
@@ -168,25 +170,38 @@ export class Scope {
 	collectSignalValues(
 		into: Record<SignalId, DehydratedSurrogate> = {},
 	): Record<SignalId, DehydratedSurrogate> {
-		for (const id of this.signalIds) {
-			into[id] = dehydrate(this.runtime.registry.read(id));
+		for (const ids of [this.signalIds, this.adoptableSignals]) {
+			for (const id of ids)
+				into[id] = dehydrate(this.runtime.registry.read(id));
 		}
 		for (const child of this.children) child.collectSignalValues(into);
 		return into;
 	}
 
 	/**
-	 * Disposes this scope and its descendants but keeps the signals they own
-	 * registered, returning their ids.
-	 *
-	 * This is the first half of replacing content: the new content adopts
-	 * the signals it declares again, and the caller deletes the rest.
+	 * Takes ownership before releasing old content. Callers must publish this
+	 * scope as the replacement first, so reentrant updates can replace it too.
+	 * Hydration consumes adoptable signals; unclaimed signals are deleted here.
+	 * A newer replacement takes both sets away before any user cleanup runs.
 	 */
-	release(into: Set<SignalId> = new Set()): Set<SignalId> {
-		const elements = this.collectElements();
-		this.releaseResources(into);
-		for (const element of elements) element.dispose();
-		return into;
+	replace(previous: Scope, insert: (adoptable: Set<SignalId>) => void): void {
+		this.takeOwnership(previous);
+		try {
+			previous.dispose();
+			this.assertActive();
+			insert(this.adoptableSignals);
+		} catch (error) {
+			this.dispose();
+			throw error;
+		} finally {
+			this.deleteAdoptableSignals();
+		}
+	}
+
+	/** Stops a DOM operation as soon as a callback supersedes its owner. */
+	assertActive(): void {
+		if (this.disposed)
+			throw new Error("Content was disposed during replacement");
 	}
 
 	/** Collects native resources deepest first, including nested content. */
@@ -207,16 +222,34 @@ export class Scope {
 		return elements.sort((a, b) => depth(b.element) - depth(a.element));
 	}
 
-	/** Moves native lifetimes into a replacement scope before releasing content. */
-	adoptElements(from: Scope): void {
-		for (const element of from.collectElements()) element.adopt(this);
+	private takeSignals(from: Scope): void {
+		for (const child of from.children) this.takeSignals(child);
+		for (const id of from.signalIds) this.adoptableSignals.add(id);
+		from.signalIds.clear();
+		if (from !== this) {
+			for (const id of from.adoptableSignals) this.adoptableSignals.add(id);
+			from.adoptableSignals.clear();
+		}
 	}
 
-	private releaseResources(into: Set<SignalId>): void {
+	/** No user callbacks run until both kinds of ownership have moved. */
+	private takeOwnership(from: Scope): ElementLifecycle[] {
+		const elements = from.collectElements();
+		for (const element of elements) element.adopt(this);
+		this.takeSignals(from);
+		return elements;
+	}
+
+	private deleteAdoptableSignals(): void {
+		for (const id of this.adoptableSignals) this.runtime.registry.delete(id);
+		this.adoptableSignals.clear();
+	}
+
+	private releaseResources(): void {
 		if (this.disposed) return;
 		this.disposed = true;
 
-		for (const child of this.children) child.releaseResources(into);
+		for (const child of this.children) child.releaseResources();
 		this.children.clear();
 		this.regions.clear();
 
@@ -228,14 +261,17 @@ export class Scope {
 		for (const cleanup of this.cleanups.reverse()) this.invoke(cleanup);
 		this.cleanups.length = 0;
 
-		for (const id of this.signalIds) into.add(id);
-		this.signalIds.clear();
-
 		this.parent?.children.delete(this);
 	}
 
 	dispose(): void {
-		for (const id of this.release()) this.runtime.registry.delete(id);
+		if (this.disposed) return;
+		// Keep retirement ownership visible while descendant scopes release
+		// callbacks. A reentrant replacement can take it onward from here.
+		const elements = this.takeOwnership(this);
+		this.releaseResources();
+		for (const element of elements) element.dispose(this);
+		this.deleteAdoptableSignals();
 	}
 
 	get isDisposed(): boolean {

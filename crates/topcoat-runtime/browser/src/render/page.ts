@@ -15,7 +15,8 @@ import { RenderUnit } from "./unit";
 
 /**
  * The outermost render unit. Requests use the current URL and signal values.
- * Responses contain a full document, but only the body's children are updated.
+ * Responses update the document root and its contents, including declarations
+ * attached to the html, head and body elements.
  */
 export class PageUnit extends RenderUnit {
 	protected readonly label = "Page";
@@ -113,7 +114,7 @@ export class PageUnit extends RenderUnit {
 
 	protected prepare(html: string): Node[] | null {
 		const doc = new DOMParser().parseFromString(html, "text/html");
-		return Array.from(doc.body.childNodes);
+		return [doc.documentElement];
 	}
 
 	protected insert(
@@ -121,9 +122,14 @@ export class PageUnit extends RenderUnit {
 		scope: Scope,
 		adoptable: Set<SignalId>,
 	): void {
-		morph(document.body, null, null, nodes, elementMorph(scope));
-		// The whole document, so declarations outside the body are adopted
-		// again.
+		const root = document.documentElement;
+		morph(
+			document,
+			root.previousSibling,
+			root.nextSibling,
+			nodes,
+			elementMorph(scope),
+		);
 		this.runtime.hydrate(document, null, null, scope, adoptable);
 	}
 }
