@@ -1,3 +1,7 @@
+#[cfg(test)]
+mod calendar_example;
+mod calendar_fixtures;
+mod calendar_showcase;
 mod components;
 
 use components::{
@@ -240,7 +244,7 @@ async fn home(cx: &Cx) -> Result<impl View> {
                             // components to the ones assembled out of them.
                             <div
                                 id="components"
-                                class="mt-14 scroll-mt-20 columns-1 gap-4 lg:columns-2 2xl:columns-3"
+                                class="mt-14 scroll-mt-20 gap-4 lg:columns-2 2xl:columns-3"
                             >
                                 demo(buttons_card())
                                 demo(notices())
@@ -248,6 +252,7 @@ async fn home(cx: &Cx) -> Result<impl View> {
                                 demo(status_card())
                                 demo(progress_card())
                                 demo(id: Some("forms"), form_card())
+                                demo(id: Some("dates"), calendar_showcase::dates())
                                 demo(checks_card())
                                 demo(switches_card())
                                 demo(radios_card())

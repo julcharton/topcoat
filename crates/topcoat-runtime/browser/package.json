@@ -7,6 +7,7 @@
 		"lint": "biome ci --config-path . . ../../topcoat-core/browser",
 		"build": "tsup && tsup --config tsup.coherence.config.ts && tsc",
 		"test": "vitest run",
+		"test:calendar": "node tests/calendar.e2e.mjs",
 		"test:browser": "vitest run --config vitest.browser.config.ts"
 	},
 	"devDependencies": {

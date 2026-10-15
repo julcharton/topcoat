@@ -97,3 +97,19 @@ fn components_are_up_to_date() {
         }
     }
 }
+
+#[test]
+fn calendar_guide_example_matches_compiled_source() {
+    let guide = include_str!("../../../docs/ui/calendar.md");
+    let example = guide
+        .split_once("```rust\n")
+        .unwrap()
+        .1
+        .split_once("```")
+        .unwrap()
+        .0;
+    assert_eq!(
+        example.trim(),
+        include_str!("../src/calendar_example.rs").trim()
+    );
+}

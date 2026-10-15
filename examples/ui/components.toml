@@ -36,6 +36,18 @@ file = "src/components/breadcrumb.rs"
 hash = "sha256:1b40f815a96997b28f35b8f385f5849d86ca53ba47fb752a3e795bfc24c3a55d"
 file = "src/components/button.rs"
 
+[registries.topcoat.components.calendar]
+hash = "sha256:53684474430169dad1cb99a39ad786e6b17e8000cbd018a338ec1f5c975cc085"
+file = "src/components/calendar.rs"
+
+[registries.topcoat.components.calendar_date]
+hash = "sha256:84c162c92bde2a1a2d4d9f6cf38481d11d2134984c8ce32a1a8cacbc2f9a1daf"
+file = "src/components/calendar_date.rs"
+
+[registries.topcoat.components.calendar_state]
+hash = "sha256:410cae4d955fce124b0477c060bab6a1d62d3b3e45126c6b7d143e4f641df688"
+file = "src/components/calendar_state.rs"
+
 [registries.topcoat.components.card]
 hash = "sha256:9c753a11ad86ad31db0c1a06584d9b1814ee1326c1e862295d508f0a7baee95d"
 file = "src/components/card.rs"
@@ -43,6 +55,14 @@ file = "src/components/card.rs"
 [registries.topcoat.components.checkbox]
 hash = "sha256:fb7cb8f77818fe9a76f62b0f705494a5e5a000de9b6a49d05cca973b028abf2d"
 file = "src/components/checkbox.rs"
+
+[registries.topcoat.components.date_field]
+hash = "sha256:f63973ff5e0df3388dc45721edb7f512b98920914be476401fae2aa593612b86"
+file = "src/components/date_field.rs"
+
+[registries.topcoat.components.date_picker]
+hash = "sha256:277ce400b48654a389afc601762976b2c96b9ac8764ec7d21bf6e5bb4542974f"
+file = "src/components/date_picker.rs"
 
 [registries.topcoat.components.dialog]
 hash = "sha256:97494bc086959953eff0e1a28ba72be8268cd4c38d83b50259c13788a3931e3c"

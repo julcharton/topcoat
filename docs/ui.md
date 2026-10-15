@@ -183,6 +183,8 @@ The components share a few conventions:
 
 Read each component's source for its props and behavior. The [`ui` example](https://github.com/tokio-rs/topcoat/tree/main/examples/ui) provides a runnable showcase.
 
+The [calendar and date-picker guide](https://github.com/tokio-rs/topcoat/blob/main/docs/ui/calendar.md) covers date-only values, server validation, native forms, keyboard interaction, and reset.
+
 # Theming
 
 A theme defines shared styles with CSS variables in `styles.css`. Components use classes such as `bg-primary` and `text-muted-foreground` to read those variables. Edit the values to change the theme across your app.

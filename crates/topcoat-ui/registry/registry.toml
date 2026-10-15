@@ -34,11 +34,30 @@ source = "src/components/button.rs"
 [components.card]
 source = "src/components/card.rs"
 
+[components.calendar_date]
+source = "src/components/calendar_date.rs"
+
+[components.calendar_state]
+source = "src/components/calendar_state.rs"
+dependencies = ["calendar_date"]
+
+[components.calendar]
+source = "src/components/calendar.rs"
+dependencies = ["calendar_date", "calendar_state"]
+
 [components.checkbox]
 source = "src/components/checkbox.rs"
 
 [components.dialog]
 source = "src/components/dialog.rs"
+
+[components.date_field]
+source = "src/components/date_field.rs"
+dependencies = ["calendar_state", "input"]
+
+[components.date_picker]
+source = "src/components/date_picker.rs"
+dependencies = ["calendar", "date_field", "floating"]
 
 [components.dropdown_menu]
 source = "src/components/dropdown_menu.rs"
