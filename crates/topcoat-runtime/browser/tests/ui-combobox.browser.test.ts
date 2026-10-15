@@ -342,6 +342,81 @@ for (const [fixtureName, control, initial, populated] of [
 	});
 }
 
+for (const [character, text, blank] of [
+	["nel", "\u0085", true],
+	["bom", "\uFEFF", false],
+] as const) {
+	for (const precedence of ["label", "reference"] as const) {
+		it(`preserves Rust ${character} naming from SSR through hydration and ${precedence} transitions`, async () => {
+			const html = fixture.unicode_naming[character][precedence];
+			const server = document.createElement("template");
+			server.innerHTML = html;
+			const serverInput = server.content.querySelector('[role="combobox"]');
+			const serverPopup = server.content.querySelector('[role="listbox"]');
+			const labelId = server.content.querySelector("label")?.id;
+			if (!serverInput || !serverPopup || !labelId)
+				throw new Error("Missing server-rendered naming");
+			const fallback = blank ? labelId : null;
+			const initialReference =
+				precedence === "reference" ? "owner-caption" : fallback;
+			expect(serverInput.getAttribute("aria-label")).toBe(text);
+			expect(serverPopup.getAttribute("aria-label")).toBe(text);
+			expect(serverPopup.getAttribute("aria-labelledby")).toBe(
+				initialReference,
+			);
+
+			const { input, popup } = mount(html);
+			// Inspect exact Unicode values: the vendored role locator normalizes
+			// whitespace with JavaScript rules, unlike the Rust naming contract.
+			function values(label: string | null, reference: string | null) {
+				expect(input.getAttribute("aria-label")).toBe(label);
+				expect(popup.getAttribute("aria-label")).toBe(label);
+				expect(popup.getAttribute("aria-labelledby")).toBe(reference);
+			}
+			async function named(name: string) {
+				input.focus();
+				await userEvent.keyboard("{ArrowDown}");
+				await expect
+					.element(page.getByRole("combobox", { name, exact: true }))
+					.toBeVisible();
+				await expect
+					.element(page.getByRole("listbox", { name, exact: true }))
+					.toBeVisible();
+			}
+			async function click(name: string) {
+				await userEvent.click(page.getByRole("button", { name, exact: true }));
+			}
+			values(text, initialReference);
+			await click("Set label");
+			values(
+				"Deploy region",
+				precedence === "reference" ? "owner-caption" : null,
+			);
+			await named(
+				precedence === "reference" ? "Region caption" : "Deploy region",
+			);
+			await click("Clear reference");
+			await named("Deploy region");
+			await click("Restore initial label");
+			values(text, fallback);
+			await click("Set reference");
+			values(text, "owner-caption");
+			await named("Region caption");
+			await click("Clear label");
+			values(null, "owner-caption");
+			await named("Region caption");
+			await click("Clear reference");
+			values(null, labelId);
+			await named("Region");
+			await click("Restore initial label");
+			values(text, fallback);
+			await click("Clear label");
+			values(null, labelId);
+			await named("Region");
+		});
+	}
+}
+
 it("initializes an actual Rust-rendered large catalog and retains the identity active at response time", async () => {
 	const { input, form, popup } = mount();
 	input.focus();

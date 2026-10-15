@@ -118,14 +118,24 @@ async fn harness(
 }
 
 #[component]
-async fn optional_naming(cx: &Cx, naming: &str, #[default] attrs: Attributes) -> Result<impl View> {
-    let label = signal(cx, || None::<String>);
-    let labelledby = signal(cx, || None::<String>);
+async fn optional_naming(
+    cx: &Cx,
+    naming: &str,
+    #[default] attrs: Attributes,
+    #[default] initial_label: Option<&str>,
+    #[default] initial_reference: Option<&str>,
+) -> Result<impl View> {
+    let initial_label = initial_label.map(str::to_owned);
+    let label = signal(cx, || initial_label.clone());
+    let labelledby = signal(cx, || initial_reference.map(str::to_owned));
     Ok(view! {
         <button @click=$(|_event: Event| label.set(Some("Deploy region".to_owned())))>
             "Set label"
         </button>
         <button @click=$(|_event: Event| label.set(None))>"Clear label"</button>
+        <button @click=$(|_event: Event| label.set(initial_label.clone()))>
+            "Restore initial label"
+        </button>
         <button @click=$(|_event: Event| label.set(Some(" \t ".to_owned())))>
             "Blank label"
         </button>
@@ -355,6 +365,25 @@ async fn compiled_combobox_fixture_is_current() {
                 .render(cx),
         )
         .into();
+    }
+    for (name, text) in [("nel", "\u{0085}"), ("bom", "\u{feff}")] {
+        for (precedence, reference) in [("label", None), ("reference", Some("owner-caption"))] {
+            fixture["unicode_naming"][name][precedence] = stable_html(
+                &view! {
+                    cx =>
+                    optional_naming(
+                        naming: "both",
+                        initial_label: Some(text),
+                        initial_reference: reference
+                    )
+                }
+                .single()
+                .await
+                .unwrap()
+                .render(cx),
+            )
+            .into();
+        }
     }
     for (name, query, revision) in [
         ("ga1", "ga", 1),

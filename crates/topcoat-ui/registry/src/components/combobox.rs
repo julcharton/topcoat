@@ -491,7 +491,8 @@ impl ComboboxState {
 /// Give the visible label [`ComboboxState::label_id`] as its ID and
 /// [`ComboboxState::input_id`] as its `for` attribute. Explicit `aria-label` or
 /// `aria-labelledby` in `attrs` names both the input and popup.
-/// When both naming values are absent or empty, the popup references the visible label.
+/// When both naming values are absent or whitespace-only under Rust's rules,
+/// the popup references the visible label.
 /// Classes go on the wrapper. Other attributes go on the input. IDs, form/value
 /// bindings, accessibility state and interaction handlers are reserved.
 #[component]
@@ -577,6 +578,7 @@ pub async fn combobox(
         // Attributes retain compiled bindings, not their original Expr types.
         // Compose only the two naming bindings, preserving their escaping and
         // signal reads. An explicit label must not be masked by our reference.
+        // Hydrate text before trimming to use Rust's Unicode whitespace rules.
         let reference_end = if reference.is_some() { ")" } else { "null)" };
         let label_start = if label.is_some() {
             "named(("
@@ -591,7 +593,7 @@ pub async fn combobox(
             cx,
             "data-topcoat-bind:aria-labelledby",
             (
-                "(() => { const named = value => value.isAttributePresent() && value.toAttributeValue().trim() !== ''; const reference = (",
+                "(() => { const named = value => value.isAttributePresent() && cx.hydrate(value.toAttributeValue()).trim().toAttributeValue() !== ''; const reference = (",
                 reference,
                 reference_end,
                 "; return reference && named(reference) ? reference : ",
