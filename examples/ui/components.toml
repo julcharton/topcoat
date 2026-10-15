@@ -61,7 +61,7 @@ hash = "sha256:185ccac8bf29b78c822dd858c7fecf2a62d048e6e6fc9a626f9ffe2b5a049722"
 file = "src/components/date_field.rs"
 
 [registries.topcoat.components.date_picker]
-hash = "sha256:44b1f5345730198635bc49fa2cc41a2284b19f676966a2bce820ae61844e1c1c"
+hash = "sha256:480e5653ea9ccf4c3c54044f603ff82967c26da354b5c0528d5b6d6094aea756"
 file = "src/components/date_picker.rs"
 
 [registries.topcoat.components.dialog]

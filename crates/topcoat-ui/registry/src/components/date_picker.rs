@@ -184,6 +184,23 @@ async fn picker(
     let description = element_id(cx);
     let group = element_id(cx);
     let reset = reset_effect(&state, &validation, &defaults, reset_cursor);
+    let trigger_id = trigger.id().to_owned();
+    let focus_owner = effect(expr!(|_scope: EffectContext| {
+        let _cancel = || wants_focus.set(false);
+        // Pointer activation need not focus the trigger. Observe the new owner
+        // even when there is no trigger focusout, without changing native focus.
+        raw!(
+            "(() => {
+            const panel = ${_scope}.element;
+            panel.ownerDocument.addEventListener('focusin', event => {
+                if (event.target.id !== ${trigger_id}.toString()
+                    && !panel.contains(event.target)) {
+                    ${_cancel}();
+                }
+            }, { signal: ${_scope}.abortSignal });
+        })()"
+        );
+    }));
     let dismiss = effect(expr!(|_scope: EffectContext| {
         let closing = close.get();
         if disabled {
@@ -327,6 +344,7 @@ async fn picker(
                 popover="auto"
                 role="dialog"
                 aria-label=(label)
+                (focus_owner)
                 class=(class!(
                     floating_variants(
                         FloatingAnchor::Invoker,

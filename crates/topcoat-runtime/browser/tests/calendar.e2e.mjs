@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium, firefox, webkit } from "playwright";
-
+import { focusRegressions } from "./calendar.focus.mjs";
 import {
 	active,
 	day,
@@ -27,6 +27,7 @@ import { reviewRegressions } from "./calendar.review.mjs";
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
 reviewRegressions(test);
+focusRegressions(test);
 
 test("SSR semantics, names, defaults, and distinct identifiers", async (page) => {
 	assert.equal(await page.locator(`${picker} [role=grid] tbody tr`).count(), 6);
