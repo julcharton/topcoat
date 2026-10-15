@@ -4,6 +4,7 @@ mod arguments;
 mod bind_attribute;
 mod connection;
 mod effect;
+mod element_ref;
 mod event_handler;
 mod expr;
 #[doc(hidden)]
@@ -27,6 +28,7 @@ pub use arguments::*;
 pub use bind_attribute::*;
 pub use connection::*;
 pub use effect::*;
+pub use element_ref::*;
 pub use event_handler::*;
 pub use expr::*;
 pub use js::*;
