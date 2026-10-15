@@ -57,11 +57,11 @@ hash = "sha256:fb7cb8f77818fe9a76f62b0f705494a5e5a000de9b6a49d05cca973b028abf2d"
 file = "src/components/checkbox.rs"
 
 [registries.topcoat.components.date_field]
-hash = "sha256:185ccac8bf29b78c822dd858c7fecf2a62d048e6e6fc9a626f9ffe2b5a049722"
+hash = "sha256:98bed43c4452537b2fdbe434758c6f0b633e7d16cff66b52e1e350b8a4994fcd"
 file = "src/components/date_field.rs"
 
 [registries.topcoat.components.date_picker]
-hash = "sha256:480e5653ea9ccf4c3c54044f603ff82967c26da354b5c0528d5b6d6094aea756"
+hash = "sha256:4b439aeb953fa523b228c3fde099f423a2701ca4f7df4d1c78ab43cece5d9107"
 file = "src/components/date_picker.rs"
 
 [registries.topcoat.components.dialog]

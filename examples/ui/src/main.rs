@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod calendar_example;
 mod calendar_fixtures;
+mod calendar_reset_fixtures;
 mod calendar_showcase;
 mod components;
 

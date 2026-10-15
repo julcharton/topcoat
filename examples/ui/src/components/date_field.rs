@@ -117,11 +117,34 @@ pub(super) async fn date_validation(
     Ok(view! { <span hidden="" data-date-validation="" (install)></span> })
 }
 
+#[track_caller]
+pub(super) fn date_input_reference(
+    cx: &Cx,
+    attrs: &mut Attributes,
+) -> Result<ElementRef<InputElement>> {
+    let id = match attrs.remove("id") {
+        Some(AttributeValue::String { value, .. }) => value,
+        Some(AttributeValue::StaticStr { value, .. }) => value.to_owned(),
+        Some(AttributeValue::PromotedStr { value, .. }) => (*value).to_owned(),
+        _ => element_id(cx),
+    };
+    // Explicit IDs must be plain tokens, so serialized attribute escapes cannot
+    // be mistaken for the live DOM identifier used by a typed reference.
+    if id.is_empty()
+        || !id
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"_-:.".contains(&c))
+    {
+        return Err(std::io::Error::other("date input id must be an ASCII identifier").into());
+    }
+    Ok(ElementRef::new(id))
+}
+
 #[component]
 pub(super) async fn date_input(
-    cx: &Cx,
     selection: Selection,
     validation: DateValidation,
+    reference: ElementRef<InputElement>,
     error: Expr<String>,
     name: &str,
     label: &str,
@@ -138,21 +161,7 @@ pub(super) async fn date_input(
     let single = selection.single.clone();
     let revision = validation.revision.clone();
 
-    let id = match attrs.remove("id") {
-        Some(AttributeValue::String { value, .. }) => value,
-        Some(AttributeValue::StaticStr { value, .. }) => value.to_owned(),
-        Some(AttributeValue::PromotedStr { value, .. }) => (*value).to_owned(),
-        _ => element_id(cx),
-    };
-    // Explicit IDs must be plain tokens, so serialized attribute escapes cannot
-    // be mistaken for the live DOM identifier used by a typed reference.
-    if id.is_empty()
-        || !id
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"_-:.".contains(&c))
-    {
-        return Err(std::io::Error::other("date input id must be an ASCII identifier").into());
-    }
+    let id = reference.id().to_owned();
     for owned in [
         "type",
         "name",
@@ -177,7 +186,6 @@ pub(super) async fn date_input(
         Some(AttributeValue::PromotedStr { value, .. }) => format!("{value} {description}"),
         _ => description.to_owned(),
     };
-    let reference = ElementRef::<InputElement>::new(id.clone());
     let draft = expr!(if is_range {
         if end {
             range.get().end
@@ -263,6 +271,7 @@ pub(super) fn reset_effect(
     validation: &DateValidation,
     defaults: &DateRangeValue,
     cursor: i32,
+    reference: &ElementRef<InputElement>,
 ) -> Effect {
     let single = state.selection.single.clone();
     let range = state.selection.range.clone();
@@ -275,28 +284,27 @@ pub(super) fn reset_effect(
     let notice = state.notice.clone();
     let close = state.close.clone();
     let defaults = defaults.clone();
-    let draft = if is_range {
-        expr!(range.get())
-    } else {
-        expr!(DateRangeValue {
-            start: single.get(),
-            end: "".to_owned()
-        })
-    };
+    let reference = reference.clone();
     effect(expr!(|_scope: EffectContext| {
         let _prepare = || {
-            let snapshot = draft.clone();
+            // This closure runs inside the untracked scoped reset listener.
+            // Equal writes and A -> B -> A are newer intent on this same handle.
+            let snapshot = if is_range {
+                range.write_revision()
+            } else {
+                single.write_revision()
+            };
             let edit = revision.get();
             let intent = request.get();
             || {
-                let value = draft.clone();
-                let current = if value.start == snapshot.start {
-                    if value.end == snapshot.end {
-                        if revision.get() == edit {
-                            request.get() == intent
-                        } else {
-                            false
-                        }
+                let latest = if is_range {
+                    range.write_revision()
+                } else {
+                    single.write_revision()
+                };
+                let current = if latest == snapshot {
+                    if revision.get() == edit {
+                        request.get() == intent
                     } else {
                         false
                     }
@@ -317,25 +325,48 @@ pub(super) fn reset_effect(
                     notice.set("".to_owned());
                     close.set(true);
                 }
+                // Native reset can overwrite a binding after a later equal write.
+                // Return the current draft without publishing another signal write.
+                if is_range {
+                    range.get()
+                } else {
+                    DateRangeValue {
+                        start: single.get(),
+                        end: "".to_owned(),
+                    }
+                }
             }
         };
+        let field = reference.resolve();
+        let _form = if field.is_ok() {
+            let owner = field.unwrap().form_target();
+            if owner.is_ok() { owner.unwrap() } else { None }
+        } else {
+            None
+        };
+        let _event_name = "reset";
         raw!(
             "(() => {
-            const root = ${_scope}.element;
-            const inputs = [...root.querySelectorAll('[data-date-input]')];
-            const form = inputs[0]?.form;
-            if (!form) return;
+            const owner = ${_form};
+            if (!owner.is_some().dehydrate()) return;
+            const inputs = [...${_scope}.element.querySelectorAll('[data-date-input]')];
+            const form = inputs[0].form;
             let timer;
-            form.addEventListener('reset', event => {
+            ${_scope}.listen(owner.unwrap(), ${_event_name}, event => {
                 clearTimeout(timer);
                 const apply = ${_prepare}();
                 timer = setTimeout(() => {
-                    if (!event.defaultPrevented && !${_scope}.abortSignal.aborted
+                    if (!event.default_prevented.dehydrate() && !${_scope}.abortSignal.aborted
                         && inputs.every(input => input.isConnected && input.form === form)) {
-                        apply();
+                        const value = apply();
+                        const values = [value.start, value.end];
+                        inputs.forEach((input, index) => {
+                            const next = values[index].toString();
+                            if (input.value !== next) input.value = next;
+                        });
                     }
                 }, 0);
-            }, { signal: ${_scope}.abortSignal });
+            });
             ${_scope}.on_cleanup(() => clearTimeout(timer));
         })()"
         );

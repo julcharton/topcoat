@@ -72,7 +72,7 @@ async fn fixtures(cx: &Cx) -> Result<impl View> {
                         attrs: attributes! { id="single-picker" }
                     )
                     date_range_picker(
-                        value: range,
+                        value: range.clone(),
                         today: today,
                         start_name: "start",
                         end_name: "end",
@@ -123,6 +123,34 @@ async fn fixtures(cx: &Cx) -> Result<impl View> {
                     </button>
                     <button type="reset" id="reset-form">"Reset"</button>
                     <button type="submit" id="submit-form">"Submit"</button>
+                    <span id="single-value" hidden="">$(single.get())</span>
+                    <span id="range-start-value" hidden="">$(range.get().start)</span>
+                    <span id="range-end-value" hidden="">$(range.get().end)</span>
+                    <button
+                        type="button"
+                        id="app-same-range"
+                        hidden=""
+                        @click=$(|_e: Event| range.set(range.get()))
+                    >
+                        "Write current range"
+                    </button>
+                    <button
+                        type="button"
+                        id="app-roundtrip-range"
+                        hidden=""
+                        @click=$(|_e: Event| {
+                            let previous = range.get();
+                            range.set(
+                                DateRangeValue {
+                                    start: "2024-04-20".to_owned(),
+                                    end: "2024-04-21".to_owned(),
+                                },
+                            );
+                            range.set(previous);
+                        })
+                    >
+                        "Restore range in one task"
+                    </button>
                 </form>
                 <form id="external-form">
                     <button type="reset" id="external-reset">"Reset external"</button>

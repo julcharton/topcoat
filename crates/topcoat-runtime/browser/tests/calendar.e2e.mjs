@@ -22,12 +22,14 @@ import {
 	validity,
 	visiblePopup,
 } from "./calendar.helpers.mjs";
+import { resetRegressions } from "./calendar.reset.mjs";
 import { reviewRegressions } from "./calendar.review.mjs";
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
 reviewRegressions(test);
 focusRegressions(test);
+resetRegressions(test);
 
 test("SSR semantics, names, defaults, and distinct identifiers", async (page) => {
 	assert.equal(await page.locator(`${picker} [role=grid] tbody tr`).count(), 6);

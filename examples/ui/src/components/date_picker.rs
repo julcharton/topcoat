@@ -11,7 +11,7 @@ use super::{
     calendar::calendar_control,
     calendar_date::{CalendarDate, DateConstraints, DateRange, WeekStart},
     calendar_state::{CalendarRules, CalendarSelection, CalendarState, DateRangeValue},
-    date_field::{DateValidation, date_input, date_validation, reset_effect},
+    date_field::{DateValidation, date_input, date_input_reference, date_validation, reset_effect},
     floating::{FloatingAlign, FloatingAnchor, FloatingSide, floating_variants},
 };
 
@@ -150,8 +150,8 @@ async fn picker(
     disabled: Expr<bool>,
     form: Option<&str>,
     mut attrs: Attributes,
-    start_attrs: Attributes,
-    end_attrs: Attributes,
+    mut start_attrs: Attributes,
+    mut end_attrs: Attributes,
 ) -> Result<impl View> {
     let validation = DateValidation::new(
         cx,
@@ -183,7 +183,9 @@ async fn picker(
     let popup = ElementRef::<HtmlElement>::new(element_id(cx));
     let description = element_id(cx);
     let group = element_id(cx);
-    let reset = reset_effect(&state, &validation, &defaults, reset_cursor);
+    let start = date_input_reference(cx, &mut start_attrs)?;
+    let end = date_input_reference(cx, &mut end_attrs)?;
+    let reset = reset_effect(&state, &validation, &defaults, reset_cursor, &start);
     let trigger_id = trigger.id().to_owned();
     let focus_owner = effect(expr!(|_scope: EffectContext| {
         let _cancel = || wants_focus.set(false);
@@ -248,6 +250,7 @@ async fn picker(
                 class="flex flex-wrap items-end gap-2"
             >
                 date_input(
+                    reference: start,
                     selection: state.selection.clone(),
                     validation: validation.clone(),
                     error: error.clone(),
@@ -263,6 +266,7 @@ async fn picker(
                 )
                 if is_range {
                     date_input(
+                        reference: end,
                         selection: state.selection.clone(),
                         validation: validation.clone(),
                         error: error.clone(),
