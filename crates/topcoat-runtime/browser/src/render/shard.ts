@@ -1,4 +1,5 @@
 import { morph } from "../../../../topcoat-core/browser/morph";
+import { elementMorph } from "../dom/element-lifecycle";
 import { parseChildren } from "../dom/fragment";
 import { compile, type Expression } from "../expression/compile";
 import { dehydrate } from "../expression/dehydrate";
@@ -92,7 +93,7 @@ export class ShardUnit extends RenderUnit {
 		const end = this.endNode;
 		if (parent === null || end === null) return;
 
-		morph(parent, this.startNode, end, nodes);
+		morph(parent, this.startNode, end, nodes, elementMorph(scope));
 		this.runtime.hydrate(parent, this.startNode, end, scope, adoptable);
 	}
 }
