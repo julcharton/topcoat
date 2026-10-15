@@ -135,6 +135,9 @@ export function flushEffects(): void {
 					errors.push(error);
 				}
 			}
+			// A settled callback starts a new drain. Independent callback writes
+			// must not share the cycle budget of the reactive cascade above.
+			runs.clear();
 			// A callback can write signals. Settle those writes before invoking
 			// the next callback, including callbacks queued by other callbacks.
 			const callback = settled.values().next().value;

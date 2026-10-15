@@ -8,6 +8,11 @@ import { setupEventHandler } from "./event";
 import { type CommentMarker, parseComment } from "./markers";
 import { setupTextExpression } from "./text";
 
+const ELEMENT_HOOKS = [
+	["data-topcoat-effect", setupEffect],
+	["data-topcoat-after-render", setupAfterRender],
+] as const;
+
 type PendingTextExpression = {
 	start: Comment;
 	js: string;
@@ -84,10 +89,7 @@ function processElement(el: Element, scope: Scope): void {
 		setupBinding(el, attr, scope);
 		setupEventHandler(el, attr, scope);
 	}
-	for (const [attribute, setup] of [
-		["data-topcoat-effect", setupEffect],
-		["data-topcoat-after-render", setupAfterRender],
-	] as const) {
+	for (const [attribute, setup] of ELEMENT_HOOKS) {
 		const source = el.getAttribute(attribute);
 		if (source === null) continue;
 		try {

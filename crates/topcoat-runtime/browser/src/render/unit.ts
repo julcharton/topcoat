@@ -86,7 +86,6 @@ export abstract class RenderUnit implements ConnectionTarget {
 	 * accepting a response of the `accept` media type.
 	 */
 	protected request(signal: AbortSignal, accept: string): Promise<Response> {
-		this.cancelRenderCallbacks();
 		const { url, headers, body } = this.rerunRequest();
 		return fetch(url, {
 			method: "POST",
@@ -189,7 +188,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 				this.readInputs();
 				for (const id of scope.collectDependencies()) registry.read(id);
 				if (this.subscribing) return;
-				this.cancelRenderCallbacks();
+				scope.cancelRenderCallbacks();
 				this.requestController.schedule(() => this.refresh());
 			});
 		} finally {
@@ -212,9 +211,13 @@ export abstract class RenderUnit implements ConnectionTarget {
 		this.scheduleConnection();
 	}
 
-	/** Invalidates pending insertion hooks while keeping the visible content live. */
-	cancelRenderCallbacks(): void {
+	/**
+	 * Begins a render by canceling queued insertion hooks in the current
+	 * content. Keeps that content live until a response replaces it.
+	 */
+	beginRender(): RenderToken {
 		this.contentScope.cancelRenderCallbacks();
+		return newRender();
 	}
 
 	/**
@@ -232,7 +235,7 @@ export abstract class RenderUnit implements ConnectionTarget {
 			return Promise.resolve();
 		}
 		connection.stop(this);
-		const render = newRender();
+		const render = this.beginRender();
 		return this.requestController.run(
 			(signal) => this.request(signal, FRAMES_MEDIA_TYPE),
 			(frame) => applyFrame(this, frame, this.label, render),

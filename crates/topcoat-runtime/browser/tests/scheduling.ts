@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
 	DEV_RUNTIME_EVENT,
 	type DevRuntimeDetail,
@@ -11,6 +11,15 @@ import { Runtime } from "../src/runtime";
 import { F64 } from "../src/surrogate";
 
 let runtime: Runtime;
+let originalUrl: string;
+let originalState: unknown;
+let originalScrollRestoration: ScrollRestoration;
+
+beforeEach(() => {
+	originalUrl = location.href;
+	originalState = history.state;
+	originalScrollRestoration = history.scrollRestoration;
+});
 
 function mount(html: string): Runtime {
 	document.body.innerHTML = html;
@@ -38,6 +47,16 @@ function owner(id: string): RenderUnit {
 	return unit;
 }
 
+/** Keeps the harness's scripts and doctype compatible with real navigation. */
+function page(html: string): string {
+	const next = document.cloneNode(true) as Document;
+	next.body.innerHTML = html;
+	const doctype = next.doctype
+		? new XMLSerializer().serializeToString(next.doctype)
+		: "";
+	return doctype + next.documentElement.outerHTML;
+}
+
 /** Each response remains pending until the test explicitly releases a frame. */
 function stream() {
 	let controller!: ReadableStreamDefaultController<Uint8Array>;
@@ -63,11 +82,14 @@ function stream() {
 }
 
 afterEach(() => {
+	runtime?.navigation.dispose();
 	runtime?.page.dispose();
 	flushEffects();
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
 	document.body.innerHTML = "";
+	history.replaceState(originalState, "", originalUrl);
+	history.scrollRestoration = originalScrollRestoration;
 });
 
 it("settles cascading bindings before callbacks and between callback writes", () => {
@@ -87,6 +109,128 @@ it("settles cascading bindings before callbacks and between callback writes", ()
 		<div data-topcoat-effect="scope => cx.signal('month').set(cx.hydrate(2))"></div>`);
 	flushEffects();
 	expect(observed).toEqual(["2", "3", "nested"]);
+});
+
+it("settles more than 100 independent after_dom writes before the final observer", () => {
+	const observed: string[] = [];
+	vi.stubGlobal("hook", (context: EffectContext) => {
+		for (let value = 2; value <= 151; value++) {
+			context.after_dom(() => {
+				observed.push(document.querySelector("input")?.value ?? "missing");
+				runtime.context.signal("month").set(new F64(value));
+			});
+		}
+		context.after_dom(() => {
+			observed.push(document.querySelector("input")?.value ?? "missing");
+		});
+	});
+	mount(`${declaration}<section data-topcoat-effect="hook"></section>
+		<input data-topcoat-bind:value="cx.signal('month').get()">`);
+	expect.soft(flushEffects).not.toThrow();
+	expect(runtime.context.signal("month").get()).toEqual(new F64(151));
+	expect.soft(document.querySelector("input")?.value).toBe("151");
+	expect(observed).toEqual(
+		Array.from({ length: 151 }, (_, i) => String(i + 1)),
+	);
+});
+
+it.each([
+	false,
+	true,
+])("cancels queued insertion hooks when navigate starts (prefetched: %s)", async (prefetched) => {
+	const response = stream();
+	const fetch = vi.fn(() => Promise.resolve(response.response));
+	vi.stubGlobal("fetch", fetch);
+	const hook = vi.fn((context: EffectContext) => {
+		(context.element as HTMLElement).focus();
+	});
+	vi.stubGlobal("hook", hook);
+	mount(installed);
+	const old = document.querySelector("button");
+	const url = new URL("/scheduling-next", location.href);
+	if (prefetched) {
+		const link = document.createElement("a");
+		link.href = url.href;
+		expect(runtime.navigation.prefetch(link)).toBe(true);
+	}
+	const navigation = runtime.navigation.navigate(url, "replace");
+	flushEffects();
+	const pendingCalls = hook.mock.calls.length;
+	const pendingFocus = document.activeElement === old;
+	expect(document.querySelector("button")).toBe(old);
+	response.push({ t: "snapshot", html: page(installed) });
+	response.close();
+	await navigation;
+	flushEffects();
+	expect.soft(pendingCalls).toBe(0);
+	expect.soft(pendingFocus).toBe(false);
+	expect(fetch).toHaveBeenCalledTimes(1);
+	expect(hook).toHaveBeenCalledTimes(1);
+	expect(document.activeElement).toBe(document.querySelector("button"));
+	expect(location.href).toBe(url.href);
+});
+
+it("keeps initial insertion hooks runnable when only prefetch starts", async () => {
+	const response = stream();
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(() => Promise.resolve(response.response)),
+	);
+	const hook = vi.fn();
+	vi.stubGlobal("hook", hook);
+	mount(installed);
+	const link = document.createElement("a");
+	link.href = new URL("/scheduling-prefetch", location.href).href;
+	expect(runtime.navigation.prefetch(link)).toBe(true);
+	flushEffects();
+	expect(hook).toHaveBeenCalledTimes(1);
+	response.close();
+});
+
+it("cancels insertion hooks when initialization starts a newer navigation", async () => {
+	const first = stream();
+	const second = stream();
+	const fetch = vi
+		.fn()
+		.mockResolvedValueOnce(first.response)
+		.mockResolvedValueOnce(second.response);
+	vi.stubGlobal("fetch", fetch);
+	const hook = vi.fn((context: EffectContext) => {
+		(context.element as HTMLElement).focus();
+	});
+	vi.stubGlobal("hook", hook);
+	let newer: Promise<void> | undefined;
+	const destination = new URL("/scheduling-newest", location.href);
+	vi.stubGlobal("initialize", () => {
+		newer = runtime.navigation.navigate(destination, "replace");
+	});
+	mount("<p>Home</p>");
+	const navigation = runtime.navigation.navigate(
+		new URL("/scheduling-intermediate", location.href),
+		"replace",
+	);
+	first.push({
+		t: "snapshot",
+		html: page(`${installed}<div data-topcoat-effect="initialize"></div>`),
+	});
+	await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+	await navigation;
+	flushEffects();
+	const pendingCalls = hook.mock.calls.length;
+	const pendingFocus =
+		document.activeElement === document.querySelector("button");
+	// An aborted navigation cannot resurrect its hooks with a later frame.
+	first.push({ t: "snapshot", html: page(installed) });
+	first.close();
+	second.push({ t: "snapshot", html: page(installed) });
+	second.close();
+	await newer;
+	flushEffects();
+	expect.soft(pendingCalls).toBe(0);
+	expect.soft(pendingFocus).toBe(false);
+	expect(hook).toHaveBeenCalledTimes(1);
+	expect(document.activeElement).toBe(document.querySelector("button"));
+	expect(location.href).toBe(destination.href);
 });
 
 it("cancels the previous invocation's callback when a later effect reruns it", () => {

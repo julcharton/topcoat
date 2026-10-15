@@ -1,6 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { Effect, flushEffects, signal, untrack } from "./reactivity";
+import {
+	afterEffects,
+	Effect,
+	flushEffects,
+	signal,
+	untrack,
+} from "./reactivity";
 
 const effects: Effect[] = [];
 
@@ -220,6 +226,22 @@ it("stops cyclic updates without wedging unrelated effects", () => {
 	value.set(1);
 	flushEffects();
 	expect(values).toEqual([0, 1]);
+});
+
+it("still stops a reactive cycle started by a settled callback", () => {
+	const a = signal(0);
+	const b = signal(0);
+	watch(() => {
+		if (a() > 0) b.set(a() + 1);
+	});
+	watch(() => {
+		if (b() > 0) a.set(b() + 1);
+	});
+	const unrelated = vi.fn();
+	afterEffects(() => a.set(1));
+	afterEffects(unrelated);
+	expect(flushEffects).toThrow("Reactive update cycle exceeded 100 runs");
+	expect(unrelated).toHaveBeenCalledTimes(1);
 });
 
 it("does not duplicate a manual flush when its microtask arrives", async () => {

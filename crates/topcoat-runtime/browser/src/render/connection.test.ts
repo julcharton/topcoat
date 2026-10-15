@@ -6,6 +6,7 @@ import {
 	type ConnectionTarget,
 	RUNTIME_PROTOCOL,
 } from "./connection";
+import { newRender } from "./frames";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -59,7 +60,7 @@ class FakeSocket extends EventTarget {
 function target(url: string, body = "{}") {
 	const self = {
 		body,
-		cancelRenderCallbacks: vi.fn(),
+		beginRender: vi.fn(newRender),
 		rerunRequest: vi.fn(() => ({
 			url,
 			headers: { "Content-Type": "application/json" },
