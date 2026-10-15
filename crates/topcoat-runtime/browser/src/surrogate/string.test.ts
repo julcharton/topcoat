@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import { Integer, integerType, setServerUsizeBits } from "./integer";
 import { String as RuntimeString, Str } from "./string";
@@ -100,75 +100,4 @@ it("trims only the requested end", () => {
 		"\u{0085}x",
 	);
 	expect(new Str("x\u{FEFF}").trim_end().toNodeText()).toBe("x\u{FEFF}");
-});
-
-it.each([
-	["", ""],
-	["already lowercase 123", "already lowercase 123"],
-	["ASCII MiXeD", "ascii mixed"],
-	["I\u0130\u0131i", "ii\u0307\u0131i"],
-	["\u00c9\u0416\u0391\u4e2d", "\u00e9\u0436\u03b1\u4e2d"],
-	["\u03a3", "\u03c3"],
-	["\u039f\u03a3", "\u03bf\u03c2"],
-	["\u039f\u03a3\u0391", "\u03bf\u03c3\u03b1"],
-	["A\u0301\u03a3\u0301", "a\u0301\u03c2\u0301"],
-	["A\u03a3\u0301B", "a\u03c3\u0301b"],
-	["A'\u03a3'", "a'\u03c2'"],
-	["A\u03a3'B", "a\u03c3'b"],
-	["\u0345\u03a3", "\u0345\u03c3"],
-	["A\u03a3\u0345", "a\u03c2\u0345"],
-	["A\u03a3\u0345B", "a\u03c3\u0345b"],
-	["A \u03a3", "a \u03c3"],
-	["A\u03a3 B", "a\u03c2 b"],
-	["\u{10400}\u{104b0}\u{1e900}", "\u{10428}\u{104d8}\u{1e922}"],
-	["\u1c89\ua7ce\u{10d50}\u{16ea0}", "\u1c8a\ua7cf\u{10d70}\u{16ebb}"],
-])("lowercases %j with Rust's default Unicode casing", (input, expected) => {
-	for (const version of ["17.0.0", "18.0.0"]) {
-		for (const original of [new Str(input), new RuntimeString(input)]) {
-			const result = original.to_lowercase(new Str(version));
-			expect(result).toBeInstanceOf(RuntimeString);
-			expect(result.toNodeText()).toBe(expected);
-			expect(original.toNodeText()).toBe(input);
-		}
-	}
-});
-
-it("does not depend on host lowercase tables or locale", () => {
-	const lowercase = vi.spyOn(globalThis.String.prototype, "toLowerCase");
-	const localeLowercase = vi.spyOn(
-		globalThis.String.prototype,
-		"toLocaleLowerCase",
-	);
-	try {
-		const result = new Str("\u0130\ua7ceA\u03a3").to_lowercase(
-			new Str("17.0.0"),
-		);
-		expect(lowercase).not.toHaveBeenCalled();
-		expect(localeLowercase).not.toHaveBeenCalled();
-		expect(result.toNodeText()).toBe("i\u0307\ua7cfa\u03c2");
-	} finally {
-		lowercase.mockRestore();
-		localeLowercase.mockRestore();
-	}
-});
-
-it("selects mappings and sigma context using the server's Unicode version", () => {
-	const input = new Str(
-		"\ua7dd\u03a3 A\u03a3\ua7dd \u{1df40} A\u0558\u03a3 A\u03a3\u0558B",
-	);
-	expect(input.to_lowercase(new Str("17.0.0")).toNodeText()).toBe(
-		"\ua7dd\u03c3 a\u03c2\ua7dd \u{1df40} a\u0558\u03c3 a\u03c2\u0558b",
-	);
-	expect(input.to_lowercase(new Str("18.0.0")).toNodeText()).toBe(
-		"\u0277\u03c2 a\u03c3\u0277 \u{1df41} a\u0558\u03c2 a\u03c3\u0558b",
-	);
-});
-
-it.each([
-	"19.0.0",
-	"17.0.1",
-	"__proto__",
-	"constructor",
-])("rejects unsupported Unicode version %s even for empty strings", (version) => {
-	expect(() => new Str("").to_lowercase(new Str(version))).toThrow();
 });

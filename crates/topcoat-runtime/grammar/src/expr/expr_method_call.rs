@@ -3,7 +3,6 @@ use std::fmt::Write;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::ExprMethodCall;
-use topcoat_core_grammar::paths::topcoat_runtime;
 
 use super::js::Js;
 use crate::expr::{Expr, name_resolver::NameResolver};
@@ -47,42 +46,9 @@ impl Expr {
             Self::dispatch(arg, &mut tokens, js, names)?;
             args.push(tokens);
         }
-        if method == "to_lowercase" {
-            if !args.is_empty() {
-                js.push_str(", ");
-            }
-            // Evaluate on the Rust target, not the proc-macro host. The
-            // browser chooses pinned tables for this exact Unicode version.
-            let version = names.capture_value(
-                quote! {
-                    #topcoat_runtime::Expr::from(const {
-                        match ::core::char::UNICODE_VERSION {
-                            (17, 0, 0) => "17.0.0",
-                            (18, 0, 0) => "18.0.0",
-                            _ => ::core::panic!("unsupported lowercase Unicode version; regenerate browser tables"),
-                        }
-                    })
-                },
-                method.span(),
-            );
-            js.expression(&version);
-        }
         js.push(')');
 
         quote! { (#receiver).#method(#(#args),*) }.to_tokens(rust);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lowercase_captures_the_target_unicode_version() {
-        let expression: Expr = syn::parse_str("text.to_lowercase()").unwrap();
-        let expanded = expression.expr_to_tokens().unwrap().to_string();
-        // A host-side lookup would erase this path from the emitted Rust.
-        assert!(expanded.contains(":: core :: char :: UNICODE_VERSION"));
     }
 }
